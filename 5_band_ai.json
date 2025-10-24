@@ -1,0 +1,241 @@
+{
+  "band_analyses": {
+    "g": {
+      "text": "user\n\nAnalyze this Green astronomical band (481nm wavelength).\n\nRespond ONLY with valid JSON in this exact format:\n{\n  \"quality\": 7,\n  \"noise_level\": \"low\",\n  \"dynamic_range\": \"good\",\n  \"features_visible\": [\"stars\", \"nebulosity\"],\n  \"brightness_distribution\": \"most pixels dark, bright stars\",\n  \"best_rgb_channel\": \"red\",\n  \"notes\": \"High quality data with good SNR\"\n}\n\nDo not include any text outside the JSON object.assistant\n\n{\n  \"quality\": 7,\n  \"noise_level\": \"low\",\n  \"dynamic_range\": \"good\",\n  \"features_visible\": [\"stars\", \"nebulosity\"],\n  \"brightness_distribution\": \"most pixels dark, bright stars\",\n  \"best_rgb_channel\": \"red\",\n  \"notes\": \"High quality data with good SNR\"\n}",
+      "raw": {
+        "json": {
+          "best_rgb_channel": "red",
+          "brightness_distribution": "most pixels dark, bright stars",
+          "dynamic_range": "good",
+          "features_visible": [
+            "stars",
+            "nebulosity"
+          ],
+          "noise_level": "low",
+          "notes": "High quality data with good SNR",
+          "quality": 7
+        },
+        "model": "unsloth/Llama-3.2-11B-Vision-Instruct-unsloth-bnb-4bit",
+        "text": "user\n\nAnalyze this Green astronomical band (481nm wavelength).\n\nRespond ONLY with valid JSON in this exact format:\n{\n  \"quality\": 7,\n  \"noise_level\": \"low\",\n  \"dynamic_range\": \"good\",\n  \"features_visible\": [\"stars\", \"nebulosity\"],\n  \"brightness_distribution\": \"most pixels dark, bright stars\",\n  \"best_rgb_channel\": \"red\",\n  \"notes\": \"High quality data with good SNR\"\n}\n\nDo not include any text outside the JSON object.assistant\n\n{\n  \"quality\": 7,\n  \"noise_level\": \"low\",\n  \"dynamic_range\": \"good\",\n  \"features_visible\": [\"stars\", \"nebulosity\"],\n  \"brightness_distribution\": \"most pixels dark, bright stars\",\n  \"best_rgb_channel\": \"red\",\n  \"notes\": \"High quality data with good SNR\"\n}"
+      },
+      "json": {
+        "quality": 7,
+        "noise_level": "low",
+        "dynamic_range": "good",
+        "features_visible": [
+          "stars",
+          "nebulosity"
+        ],
+        "brightness_distribution": "most pixels dark, bright stars",
+        "best_rgb_channel": "red",
+        "notes": "High quality data with good SNR"
+      }
+    },
+    "r": {
+      "text": "user\n\nAnalyze this Red astronomical band (617nm wavelength).\n\nRespond ONLY with valid JSON in this exact format:\n{\n  \"quality\": 7,\n  \"noise_level\": \"low\",\n  \"dynamic_range\": \"good\",\n  \"features_visible\": [\"stars\", \"nebulosity\"],\n  \"brightness_distribution\": \"most pixels dark, bright stars\",\n  \"best_rgb_channel\": \"red\",\n  \"notes\": \"High quality data with good SNR\"\n}\n\nDo not include any text outside the JSON object.assistant\n\n{\n  \"quality\": 7,\n  \"noise_level\": \"low\",\n  \"dynamic_range\": \"good\",\n  \"features_visible\": [\"stars\", \"nebulosity\"],\n  \"brightness_distribution\": \"most pixels dark, bright stars\",\n  \"best_rgb_channel\": \"red\",\n  \"notes\": \"High quality data with good SNR\"\n}",
+      "raw": {
+        "json": {
+          "best_rgb_channel": "red",
+          "brightness_distribution": "most pixels dark, bright stars",
+          "dynamic_range": "good",
+          "features_visible": [
+            "stars",
+            "nebulosity"
+          ],
+          "noise_level": "low",
+          "notes": "High quality data with good SNR",
+          "quality": 7
+        },
+        "model": "unsloth/Llama-3.2-11B-Vision-Instruct-unsloth-bnb-4bit",
+        "text": "user\n\nAnalyze this Red astronomical band (617nm wavelength).\n\nRespond ONLY with valid JSON in this exact format:\n{\n  \"quality\": 7,\n  \"noise_level\": \"low\",\n  \"dynamic_range\": \"good\",\n  \"features_visible\": [\"stars\", \"nebulosity\"],\n  \"brightness_distribution\": \"most pixels dark, bright stars\",\n  \"best_rgb_channel\": \"red\",\n  \"notes\": \"High quality data with good SNR\"\n}\n\nDo not include any text outside the JSON object.assistant\n\n{\n  \"quality\": 7,\n  \"noise_level\": \"low\",\n  \"dynamic_range\": \"good\",\n  \"features_visible\": [\"stars\", \"nebulosity\"],\n  \"brightness_distribution\": \"most pixels dark, bright stars\",\n  \"best_rgb_channel\": \"red\",\n  \"notes\": \"High quality data with good SNR\"\n}"
+      },
+      "json": {
+        "quality": 7,
+        "noise_level": "low",
+        "dynamic_range": "good",
+        "features_visible": [
+          "stars",
+          "nebulosity"
+        ],
+        "brightness_distribution": "most pixels dark, bright stars",
+        "best_rgb_channel": "red",
+        "notes": "High quality data with good SNR"
+      }
+    },
+    "i": {
+      "text": "user\n\nAnalyze this Near-IR astronomical band (752nm wavelength).\n\nRespond ONLY with valid JSON in this exact format:\n{\n  \"quality\": 7,\n  \"noise_level\": \"low\",\n  \"dynamic_range\": \"good\",\n  \"features_visible\": [\"stars\", \"nebulosity\"],\n  \"brightness_distribution\": \"most pixels dark, bright stars\",\n  \"best_rgb_channel\": \"red\",\n  \"notes\": \"High quality data with good SNR\"\n}\n\nDo not include any text outside the JSON object.assistant\n\n{\n  \"quality\": 7,\n  \"noise_level\": \"low\",\n  \"dynamic_range\": \"good\",\n  \"features_visible\": [\"stars\", \"nebulosity\"],\n  \"brightness_distribution\": \"most pixels dark, bright stars\",\n  \"best_rgb_channel\": \"red\",\n  \"notes\": \"High quality data with good SNR\"\n}",
+      "raw": {
+        "json": {
+          "best_rgb_channel": "red",
+          "brightness_distribution": "most pixels dark, bright stars",
+          "dynamic_range": "good",
+          "features_visible": [
+            "stars",
+            "nebulosity"
+          ],
+          "noise_level": "low",
+          "notes": "High quality data with good SNR",
+          "quality": 7
+        },
+        "model": "unsloth/Llama-3.2-11B-Vision-Instruct-unsloth-bnb-4bit",
+        "text": "user\n\nAnalyze this Near-IR astronomical band (752nm wavelength).\n\nRespond ONLY with valid JSON in this exact format:\n{\n  \"quality\": 7,\n  \"noise_level\": \"low\",\n  \"dynamic_range\": \"good\",\n  \"features_visible\": [\"stars\", \"nebulosity\"],\n  \"brightness_distribution\": \"most pixels dark, bright stars\",\n  \"best_rgb_channel\": \"red\",\n  \"notes\": \"High quality data with good SNR\"\n}\n\nDo not include any text outside the JSON object.assistant\n\n{\n  \"quality\": 7,\n  \"noise_level\": \"low\",\n  \"dynamic_range\": \"good\",\n  \"features_visible\": [\"stars\", \"nebulosity\"],\n  \"brightness_distribution\": \"most pixels dark, bright stars\",\n  \"best_rgb_channel\": \"red\",\n  \"notes\": \"High quality data with good SNR\"\n}"
+      },
+      "json": {
+        "quality": 7,
+        "noise_level": "low",
+        "dynamic_range": "good",
+        "features_visible": [
+          "stars",
+          "nebulosity"
+        ],
+        "brightness_distribution": "most pixels dark, bright stars",
+        "best_rgb_channel": "red",
+        "notes": "High quality data with good SNR"
+      }
+    },
+    "z": {
+      "text": "user\n\nAnalyze this IR astronomical band (866nm wavelength).\n\nRespond ONLY with valid JSON in this exact format:\n{\n  \"quality\": 7,\n  \"noise_level\": \"low\",\n  \"dynamic_range\": \"good\",\n  \"features_visible\": [\"stars\", \"nebulosity\"],\n  \"brightness_distribution\": \"most pixels dark, bright stars\",\n  \"best_rgb_channel\": \"red\",\n  \"notes\": \"High quality data with good SNR\"\n}\n\nDo not include any text outside the JSON object.assistant\n\n{\n  \"quality\": 7,\n  \"noise_level\": \"low\",\n  \"dynamic_range\": \"good\",\n  \"features_visible\": [\"stars\", \"nebulosity\"],\n  \"brightness_distribution\": \"most pixels dark, bright stars\",\n  \"best_rgb_channel\": \"red\",\n  \"notes\": \"High quality data with good SNR\"\n}",
+      "raw": {
+        "json": {
+          "best_rgb_channel": "red",
+          "brightness_distribution": "most pixels dark, bright stars",
+          "dynamic_range": "good",
+          "features_visible": [
+            "stars",
+            "nebulosity"
+          ],
+          "noise_level": "low",
+          "notes": "High quality data with good SNR",
+          "quality": 7
+        },
+        "model": "unsloth/Llama-3.2-11B-Vision-Instruct-unsloth-bnb-4bit",
+        "text": "user\n\nAnalyze this IR astronomical band (866nm wavelength).\n\nRespond ONLY with valid JSON in this exact format:\n{\n  \"quality\": 7,\n  \"noise_level\": \"low\",\n  \"dynamic_range\": \"good\",\n  \"features_visible\": [\"stars\", \"nebulosity\"],\n  \"brightness_distribution\": \"most pixels dark, bright stars\",\n  \"best_rgb_channel\": \"red\",\n  \"notes\": \"High quality data with good SNR\"\n}\n\nDo not include any text outside the JSON object.assistant\n\n{\n  \"quality\": 7,\n  \"noise_level\": \"low\",\n  \"dynamic_range\": \"good\",\n  \"features_visible\": [\"stars\", \"nebulosity\"],\n  \"brightness_distribution\": \"most pixels dark, bright stars\",\n  \"best_rgb_channel\": \"red\",\n  \"notes\": \"High quality data with good SNR\"\n}"
+      },
+      "json": {
+        "quality": 7,
+        "noise_level": "low",
+        "dynamic_range": "good",
+        "features_visible": [
+          "stars",
+          "nebulosity"
+        ],
+        "brightness_distribution": "most pixels dark, bright stars",
+        "best_rgb_channel": "red",
+        "notes": "High quality data with good SNR"
+      }
+    },
+    "y": {
+      "text": "user\n\nAnalyze this Far-IR astronomical band (962nm wavelength).\n\nRespond ONLY with valid JSON in this exact format:\n{\n  \"quality\": 7,\n  \"noise_level\": \"low\",\n  \"dynamic_range\": \"good\",\n  \"features_visible\": [\"stars\", \"nebulosity\"],\n  \"brightness_distribution\": \"most pixels dark, bright stars\",\n  \"best_rgb_channel\": \"red\",\n  \"notes\": \"High quality data with good SNR\"\n}\n\nDo not include any text outside the JSON object.assistant\n\n{\n  \"quality\": 7,\n  \"noise_level\": \"low\",\n  \"dynamic_range\": \"good\",\n  \"features_visible\": [\"stars\", \"nebulosity\"],\n  \"brightness_distribution\": \"most pixels dark, bright stars\",\n  \"best_rgb_channel\": \"red\",\n  \"notes\": \"High quality data with good SNR\"\n}",
+      "raw": {
+        "json": {
+          "best_rgb_channel": "red",
+          "brightness_distribution": "most pixels dark, bright stars",
+          "dynamic_range": "good",
+          "features_visible": [
+            "stars",
+            "nebulosity"
+          ],
+          "noise_level": "low",
+          "notes": "High quality data with good SNR",
+          "quality": 7
+        },
+        "model": "unsloth/Llama-3.2-11B-Vision-Instruct-unsloth-bnb-4bit",
+        "text": "user\n\nAnalyze this Far-IR astronomical band (962nm wavelength).\n\nRespond ONLY with valid JSON in this exact format:\n{\n  \"quality\": 7,\n  \"noise_level\": \"low\",\n  \"dynamic_range\": \"good\",\n  \"features_visible\": [\"stars\", \"nebulosity\"],\n  \"brightness_distribution\": \"most pixels dark, bright stars\",\n  \"best_rgb_channel\": \"red\",\n  \"notes\": \"High quality data with good SNR\"\n}\n\nDo not include any text outside the JSON object.assistant\n\n{\n  \"quality\": 7,\n  \"noise_level\": \"low\",\n  \"dynamic_range\": \"good\",\n  \"features_visible\": [\"stars\", \"nebulosity\"],\n  \"brightness_distribution\": \"most pixels dark, bright stars\",\n  \"best_rgb_channel\": \"red\",\n  \"notes\": \"High quality data with good SNR\"\n}"
+      },
+      "json": {
+        "quality": 7,
+        "noise_level": "low",
+        "dynamic_range": "good",
+        "features_visible": [
+          "stars",
+          "nebulosity"
+        ],
+        "brightness_distribution": "most pixels dark, bright stars",
+        "best_rgb_channel": "red",
+        "notes": "High quality data with good SNR"
+      }
+    }
+  },
+  "rgb_mapping": {
+    "text": "user\n\nGiven these astronomical band analyses:\n\ng: quality=7, best_channel=red\nr: quality=7, best_channel=red\ni: quality=7, best_channel=red\nz: quality=7, best_channel=red\ny: quality=7, best_channel=red\n\nRecommend optimal RGB mapping following wavelength order (longer->red, shorter->blue).\n\nRespond ONLY with valid JSON:\n{\n  \"red\": \"i\",\n  \"green\": \"r\",\n  \"blue\": \"g\",\n  \"reasoning\": \"i-band (752nm) has longest wavelength for red, r-band (617nm) for green, g-band (481nm) shortest for blue\"\n}\n\nDo not include any text outside the JSON object.assistant\n\n{\n  \"red\": \"i\",\n  \"green\": \"r\",\n  \"blue\": \"g\",\n  \"reasoning\": \"i-band (752nm) has longest wavelength for red, r-band (617nm) for green, g-band (481nm) shortest for blue\"\n}",
+    "raw": {
+      "json": {
+        "blue": "g",
+        "green": "r",
+        "reasoning": "i-band (752nm) has longest wavelength for red, r-band (617nm) for green, g-band (481nm) shortest for blue",
+        "red": "i"
+      },
+      "model": "unsloth/Llama-3.2-11B-Vision-Instruct-unsloth-bnb-4bit",
+      "text": "user\n\nGiven these astronomical band analyses:\n\ng: quality=7, best_channel=red\nr: quality=7, best_channel=red\ni: quality=7, best_channel=red\nz: quality=7, best_channel=red\ny: quality=7, best_channel=red\n\nRecommend optimal RGB mapping following wavelength order (longer->red, shorter->blue).\n\nRespond ONLY with valid JSON:\n{\n  \"red\": \"i\",\n  \"green\": \"r\",\n  \"blue\": \"g\",\n  \"reasoning\": \"i-band (752nm) has longest wavelength for red, r-band (617nm) for green, g-band (481nm) shortest for blue\"\n}\n\nDo not include any text outside the JSON object.assistant\n\n{\n  \"red\": \"i\",\n  \"green\": \"r\",\n  \"blue\": \"g\",\n  \"reasoning\": \"i-band (752nm) has longest wavelength for red, r-band (617nm) for green, g-band (481nm) shortest for blue\"\n}"
+    },
+    "json": {
+      "red": "i",
+      "green": "r",
+      "blue": "g",
+      "reasoning": "i-band (752nm) has longest wavelength for red, r-band (617nm) for green, g-band (481nm) shortest for blue"
+    }
+  },
+  "quality_assessment": {
+    "text": "user\n\nEvaluate this processed astronomical composite.\n\nProcessing applied:\n- zscale: Adaptive histogram normalization\n- clahe: clip_limit=0.03\n- unsharp_mask: sigma=2, amount=0.5\n- star_enhancement: 99th percentile, boost=1.3x\n- luminance_masking: 5th percentile -> black\n\nRespond ONLY with valid JSON:\n{\n  \"zscale\": {\"effective\": true, \"recommendation\": \"working well\"},\n  \"clahe\": {\"effective\": true, \"suggested_clip_limit\": 0.03, \"notes\": \"good contrast\"},\n  \"unsharp_mask\": {\"effective\": true, \"suggested_amount\": 0.5},\n  \"star_enhancement\": {\"effective\": true, \"suggested_threshold\": 99},\n  \"luminance_masking\": {\"effective\": true, \"suggested_percentile\": 5},\n  \"overall_quality\": 8,\n  \"major_issues\": [],\n  \"recommendations\": [\"Consider slight brightness boost\"]\n}\n\nDo not include any text outside the JSON object.assistant\n\n{\n  \"zscale\": {\"effective\": true, \"recommendation\": \"working well\"},\n  \"clahe\": {\"effective\": true, \"suggested_clip_limit\": 0.03, \"notes\": \"good contrast\"},\n  \"unsharp_mask\": {\"effective\": true, \"suggested_amount\": 0.5},\n  \"star_enhancement\": {\"effective\": true, \"suggested_threshold\": 99},\n  \"luminance_masking\": {\"effective\": true, \"suggested_percentile\": 5},\n  \"overall_quality\": 8,\n  \"major_issues\": [],\n  \"recommendations\": [\"Consider slight brightness boost\"]\n}",
+    "raw": {
+      "json": {
+        "clahe": {
+          "effective": true,
+          "notes": "good contrast",
+          "suggested_clip_limit": 0.03
+        },
+        "luminance_masking": {
+          "effective": true,
+          "suggested_percentile": 5
+        },
+        "major_issues": [],
+        "overall_quality": 8,
+        "recommendations": [
+          "Consider slight brightness boost"
+        ],
+        "star_enhancement": {
+          "effective": true,
+          "suggested_threshold": 99
+        },
+        "unsharp_mask": {
+          "effective": true,
+          "suggested_amount": 0.5
+        },
+        "zscale": {
+          "effective": true,
+          "recommendation": "working well"
+        }
+      },
+      "model": "unsloth/Llama-3.2-11B-Vision-Instruct-unsloth-bnb-4bit",
+      "text": "user\n\nEvaluate this processed astronomical composite.\n\nProcessing applied:\n- zscale: Adaptive histogram normalization\n- clahe: clip_limit=0.03\n- unsharp_mask: sigma=2, amount=0.5\n- star_enhancement: 99th percentile, boost=1.3x\n- luminance_masking: 5th percentile -> black\n\nRespond ONLY with valid JSON:\n{\n  \"zscale\": {\"effective\": true, \"recommendation\": \"working well\"},\n  \"clahe\": {\"effective\": true, \"suggested_clip_limit\": 0.03, \"notes\": \"good contrast\"},\n  \"unsharp_mask\": {\"effective\": true, \"suggested_amount\": 0.5},\n  \"star_enhancement\": {\"effective\": true, \"suggested_threshold\": 99},\n  \"luminance_masking\": {\"effective\": true, \"suggested_percentile\": 5},\n  \"overall_quality\": 8,\n  \"major_issues\": [],\n  \"recommendations\": [\"Consider slight brightness boost\"]\n}\n\nDo not include any text outside the JSON object.assistant\n\n{\n  \"zscale\": {\"effective\": true, \"recommendation\": \"working well\"},\n  \"clahe\": {\"effective\": true, \"suggested_clip_limit\": 0.03, \"notes\": \"good contrast\"},\n  \"unsharp_mask\": {\"effective\": true, \"suggested_amount\": 0.5},\n  \"star_enhancement\": {\"effective\": true, \"suggested_threshold\": 99},\n  \"luminance_masking\": {\"effective\": true, \"suggested_percentile\": 5},\n  \"overall_quality\": 8,\n  \"major_issues\": [],\n  \"recommendations\": [\"Consider slight brightness boost\"]\n}"
+    },
+    "json": {
+      "zscale": {
+        "effective": true,
+        "recommendation": "working well"
+      },
+      "clahe": {
+        "effective": true,
+        "suggested_clip_limit": 0.03,
+        "notes": "good contrast"
+      },
+      "unsharp_mask": {
+        "effective": true,
+        "suggested_amount": 0.5
+      },
+      "star_enhancement": {
+        "effective": true,
+        "suggested_threshold": 99
+      },
+      "luminance_masking": {
+        "effective": true,
+        "suggested_percentile": 5
+      },
+      "overall_quality": 8,
+      "major_issues": [],
+      "recommendations": [
+        "Consider slight brightness boost"
+      ]
+    }
+  }
+}

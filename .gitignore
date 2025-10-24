@@ -1,0 +1,29 @@
+# Byte-compiled / optimized / DLL files
+*.pyc
+*.pyo
+__pycache__/
+*.so
+
+# Environment variables and secrets
+.env
+.env.*
+*.key
+*_key.txt
+secrets/
+
+# Logs
+*.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project outputs
+palette_output/
+palette_output_v2/

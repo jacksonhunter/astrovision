@@ -1,0 +1,29 @@
+[project]
+name = "VisionProject"
+version = "0.1.0"
+requires-python = ">= 3.11.13"
+dependencies = [
+    "transformers>=4.40.0",
+    "torch>=2.0.0",
+    "pillow>=10.0.0",
+    "accelerate>=0.20.0",
+    "bitsandbytes>=0.41.0",
+    "unsloth[colab-new] @ git+https://github.com/unslothai/unsloth.git",
+    "sentencepiece>=0.1.99",
+    "protobuf>=3.20.0",
+    "xformers>=0.0.22",
+    "astropy>=5.3.0",
+    "aplpy>=2.1.0",
+    "matplotlib>=3.7.0",
+    "numpy>=1.24.0",
+    "scipy>=1.11.0",
+    "scikit-image>=0.21.0",
+    "opencv-python>=4.8.0"
+]
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_backend"
+
+[tool.setuptools.packages.find]
+where = ["src"]
