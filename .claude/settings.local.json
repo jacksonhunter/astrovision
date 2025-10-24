@@ -7,7 +7,10 @@
       "Bash(pwsh -NoProfile -Command \"Get-ChildItem ''\\127.0.0.1\\Experiments\\VisionProject\\raw_fits'' -Directory | Select-Object -ExpandProperty Name\")",
       "Read(//c/127.0.0.1/Experiments/VisionProject/scripts/**)",
       "WebFetch(domain:noirlab.edu)",
-      "Bash(python test_fewshot_astronomy.py:*)"
+      "Bash(python test_fewshot_astronomy.py:*)",
+      "Bash(mkdir:*)",
+      "Bash(git mv:*)",
+      "Bash(git add:*)"
     ],
     "deny": [],
     "ask": []

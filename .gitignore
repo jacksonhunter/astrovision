@@ -27,3 +27,8 @@ Thumbs.db
 # Project outputs
 palette_output/
 palette_output_v2/
+outputs/*.png
+outputs/*.jpg
+outputs/*.json
+*.png
+*.jpg
