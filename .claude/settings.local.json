@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//c/Users/jacks/experiments/VSCodeProjects/PowerShell/profiles/**)",
+      "Read(//c/Users/jacks/experiments/PycharmProjects/**)",
+      "Bash(scp:*)",
+      "Bash(pwsh -NoProfile -Command \"Get-ChildItem ''\\127.0.0.1\\Experiments\\VisionProject\\raw_fits'' -Directory | Select-Object -ExpandProperty Name\")",
+      "Read(//c/127.0.0.1/Experiments/VisionProject/scripts/**)",
+      "WebFetch(domain:noirlab.edu)",
+      "Bash(python test_fewshot_astronomy.py:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

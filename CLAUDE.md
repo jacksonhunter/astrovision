@@ -1,328 +1,283 @@
 # VisionProject - AI-Guided Astronomical Image Processing
 
-**Project Status:** BASELINE ESTABLISHED
-**Date:** 2025-10-23
-**Baseline Script:** `test_5band_ai_analysis.py`
-
-## Project Overview
-
-AI-guided astronomical image composition from multi-band FITS data using local vision models for intelligent processing decisions. This project enables planetarium-quality image creation from scientific data with structured AI feedback on all processing parameters.
+**Project Status:** IN DEVELOPMENT - Learning Phase
+**Date:** 2025-10-24
+**Current Focus:** Understanding few-shot JSON training for astronomical image analysis
 
 ---
 
-## BASELINE: 5-Band AI Analysis Pipeline
+## Executive Summary
 
-### Current Capabilities ✅
+**Goal:** Use local vision AI to analyze astronomical FITS images and provide structured feedback for processing decisions (quality scores, RGB mapping, stretch parameters).
 
-**Script:** `test_5band_ai_analysis.py`
+**Current Reality:** We can get JSON responses, but the AI often copies example patterns rather than independently analyzing images. This is a **learning project** about prompt engineering for vision models, not yet a production tool.
 
-#### 1. Multi-Band FITS Processing
-- Loads all 5 PanSTARRS bands (g, r, i, z, y) from MAST archive
-- Handles compressed FITS with WCS metadata
-- Zscale normalization with proper dynamic range handling
-- Suppresses common FITS warnings (deprecated PC keywords)
+---
 
-#### 2. Structured AI Analysis
-- **Individual Band Assessment** (per band):
-  - Quality score (0-10)
-  - Noise level (low/medium/high)
-  - Dynamic range evaluation
-  - Visible features (stars, nebulosity, galaxies)
-  - Brightness distribution characteristics
-  - Best RGB channel recommendation
+## What We've Learned
 
-- **RGB Mapping Recommendation**:
-  - Physics-informed wavelength ordering (longer → red, shorter → blue)
-  - Band assignment with reasoning
-  - Current result: i(752nm)→Red, r(617nm)→Green, g(481nm)→Blue
+### ✅ Confirmed Working
 
-- **Quality Assessment** (final composite):
-  - Evaluation of each processing step (zscale, CLAHE, unsharp mask, star enhancement, luminance masking)
-  - Effective/not effective flags
-  - Specific parameter suggestions (clip_limit, sigma, amount, threshold, percentile)
-  - Overall quality score
-  - Recommendations for improvement
+1. **Basic AI Vision:** Model CAN see and distinguish different images
+   - Test: Black/white/red squares → Correctly identified all colors
+   - Conclusion: The model has functional vision capabilities
 
-#### 3. Processing Pipeline
+2. **JSON Format Training:** Can teach JSON response format via few-shot learning
+   - 3 examples with explicit schema → Query returns valid JSON
+   - Server auto-extracts JSON from responses
+
+3. **Context Building Strategy:** Server supports accumulating context across images
+   - `strategy: "context_building"` passes previous examples to model
+   - Each image sees what came before
+
+### ❌ Current Limitations
+
+1. **Template Copying vs. Analysis**
+   - AI learns the JSON structure but often copies content from examples
+   - Example: Showed M106 (galaxy), M16 (nebula), M17 (nebula), then query
+   - Result: M17 and query both got M106's assessment ("spiral arms, dust lanes")
+   - **Not analyzing independently**
+
+2. **Prompt Engineering Challenge**
+   - Initial attempt: Gave example values in schema → AI copied exactly
+   - Second attempt: Few-shot with real images → AI copies last similar example
+   - **Need better prompting strategy**
+
+3. **No True Multi-Turn Support**
+   - Server doesn't accept `{"role": "assistant", "text": "..."}` messages
+   - Can't pre-fill expected responses like true few-shot examples show
+   - Limited to user messages with images
+
+---
+
+## Project Evolution
+
+### Phase 1: False Start (2025-10-23)
+**Claimed:** "Baseline established, 100% JSON parsing, 8/10 quality"
+**Reality:** AI was copying example template, all 5 bands got identical scores
+**Lesson:** JSON format ≠ meaningful analysis
+
+### Phase 2: Understanding the Problem (2025-10-24)
+**Discovery:** Structured prompts constrained AI too much
+**Test:** Simple colored squares with few-shot → **SUCCESS** (correctly identified colors)
+**Insight:** Few-shot CAN work, but needs proper examples
+
+### Phase 3: Real Astronomical Training (Current)
+**Approach:** 3 real NOIRLab images (M106, Eagle Nebula, M17) as training
+**Result:** JSON format learned, but content still copies from examples
+**Status:** Need to refine prompting strategy
+
+---
+
+## Technical Architecture
+
+### Components
+
+**1. Server** (Remote, via SSH tunnel)
+- `http://localhost:5000` (tunneled to 192.168.50.194)
+- Model: `unsloth/Llama-3.2-11B-Vision-Instruct-unsloth-bnb-4bit`
+- Supports: `sequential` and `context_building` strategies
+- Auto-extracts JSON from responses
+
+**2. FITS Processing** (`src/astro_vision_composer/`)
+- `fits_processor.py` - Load/normalize FITS data
+- `composite_generator.py` - Multi-band composition with enhancement
+- `vision_compositor.py` - AI integration (needs work)
+
+**3. Test Scripts** (Root directory)
+- `test_ai_vision.py` - Basic vision test (black/white/red)
+- `test_json_proper_fewshot.py` - JSON training with colored squares
+- `test_fewshot_astronomy.py` - **Current best attempt** - Real astronomical examples
+- `test_5band_v2.py` - 5-band analysis (not yet working properly)
+
+---
+
+## Current Best Practice
+
+### What Works for JSON Format
+
+```python
+# 3 examples with EXPLICIT schema
+messages = [
+    {
+        "image_base64": example1_b64,
+        "text": 'Analyze. Respond ONLY with JSON: {"color": "<color>", "brightness": "<level>"}'
+    },
+    {
+        "image_base64": example2_b64,
+        "text": 'Analyze. Respond ONLY with JSON: {"color": "<color>", "brightness": "<level>"}'
+    },
+    {
+        "image_base64": example3_b64,
+        "text": 'Analyze. Respond ONLY with JSON: {"color": "<color>", "brightness": "<level>"}'
+    },
+    # Query: Still explicit about JSON
+    {
+        "image_base64": query_b64,
+        "text": 'Analyze in JSON with same fields'
+    }
+]
+
+response = requests.post(
+    "http://localhost:5000/generate",
+    json={"messages": messages, "strategy": "context_building", "max_tokens": 200}
+)
 ```
-Raw FITS → Zscale → CLAHE → Unsharp Mask → Star Boost → Luminance Masking → Composite
+
+**Key Insights:**
+- **Always** ask for JSON, even in query
+- 3+ examples to establish pattern
+- Use `context_building` strategy
+- Keep prompts consistent across examples
+
+### What Doesn't Work
+
+1. **Vague query prompts** - "analyze this" without "respond in JSON"
+2. **Example values in schema** - `"quality": 7` → AI copies "7" for everything
+3. **Too few examples** - 1-2 examples = coincidence, not pattern
+4. **Mixed prompt styles** - Inconsistent format confuses learning
+
+---
+
+## Known Issues
+
+### Issue 1: Template Copying
+**Symptom:** Different images get same assessment
+**Cause:** AI pattern-matches to most similar training example
+**Status:** Investigating better prompting strategies
+
+### Issue 2: Server Limitations
+**Symptom:** Can't pre-fill assistant responses
+**Impact:** Limited few-shot capabilities vs. true multi-turn dialogue
+**Workaround:** Describe expected responses in user prompt text
+
+### Issue 3: No Variation Detection
+**Symptom:** Can't easily tell if AI is analyzing or copying
+**Need:** Validation tests with known-different images
+
+---
+
+## Realistic Goals
+
+### Short-term (This Week)
+- [ ] Find prompting strategy that prevents template copying
+- [ ] Test with known-different astronomical features (galaxy vs. nebula vs. stars)
+- [ ] Validate AI can distinguish these independently
+
+### Medium-term (This Month)
+- [ ] Reliable JSON responses for single-band analysis
+- [ ] Quality scoring that reflects actual image characteristics
+- [ ] RGB mapping recommendation based on wavelength
+
+### Long-term (Aspirational)
+- [ ] Batch processing of multi-band FITS data
+- [ ] Parameter suggestions for stretch/enhancement
+- [ ] Automated composite generation pipeline
+
+---
+
+## Test Image Sources
+
+### Working URLs
+- **NOIRLab FITS Liberator:** `https://noirlab.edu/public/media/archives/education/large/eduXXX.jpg`
+  - edu027: M106 Galaxy
+  - edu008: Eagle Nebula (M16)
+  - edu010: M17 Star Forming Nebula
+  - Pattern: Replace XXX with 3-digit number
+
+### User-Agent Required
+```python
+headers = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+}
 ```
 
-**Parameters (AI-validated):**
-- Zscale: Adaptive histogram normalization ✓ Working well
-- CLAHE: clip_limit=0.03 ✓ Good contrast
-- Unsharp mask: sigma=2, amount=0.5 ✓ Effective
-- Star enhancement: 99th percentile, 1.3x boost ✓ Effective
-- Luminance masking: 5th percentile → black ✓ Effective
-
-#### 4. Dual Output Format
-- **Visual:** PNG composite (95% quality JPEG compression)
-- **Data:** Structured JSON with:
-  - All band analyses (raw text + parsed JSON)
-  - RGB mapping decision + reasoning
-  - Quality assessment with parameter suggestions
-  - Model attribution (Llama-3.2-11B-Vision-Instruct)
-
-### Success Metrics
-
-**Latest Run (2025-10-23):**
-- Bands processed: 5/5 ✅
-- AI responses: 7/7 (5 bands + 1 mapping + 1 assessment) ✅
-- JSON parsing: 100% success rate ✅
-- Overall quality: 8/10 ✅
-- Processing time: ~3 minutes total
-- Major issues: None
-
-### Architecture
-
-#### Components
-1. **FITSImageProcessor** (`src/astro_vision_composer/fits_processor.py`)
-   - FITS loading with WCS support
-   - Band extraction and normalization
-   - Metadata extraction
-
-2. **CompositeImageGenerator** (`src/astro_vision_composer/composite_generator.py`)
-   - Multi-band composition
-   - Enhancement pipeline (CLAHE, unsharp, star boost, masking)
-   - Image output with quality control
-
-3. **Remote AI Server** (`scripts/transformers_pipeline_server.py`)
-   - HTTP API on localhost:5000
-   - Llama-3.2-11B-Vision model
-   - Base64 image handling
-   - Structured JSON prompts
-
-#### Data Flow
-```
-FITS Files → FITSImageProcessor → Normalized Bands
-                                        ↓
-                                   AI Analysis (per band)
-                                        ↓
-                                   RGB Mapping (AI recommendation)
-                                        ↓
-                           CompositeImageGenerator → Processing Pipeline
-                                        ↓
-                              AI Quality Assessment
-                                        ↓
-                            PNG Output + JSON Results
-```
-
 ---
 
-## Project Goals
+## Development Environment
 
-### Completed ✅
-- [x] FITS loading and band extraction
-- [x] Zscale normalization
-- [x] Multi-band composition
-- [x] Processing pipeline (CLAHE, unsharp, star boost, masking)
-- [x] Remote AI integration via HTTP
-- [x] **Structured JSON responses (MAJOR ACHIEVEMENT)**
-- [x] Individual band analysis
-- [x] RGB mapping recommendation
-- [x] Quality assessment with parameter feedback
-- [x] Dual output (image + data)
-- [x] 5-band workflow (g, r, i, z, y)
-
-### In Progress 🔄
-- [ ] Parameter optimization loop (use AI suggestions to refine processing)
-- [ ] Batch processing of multiple targets
-- [ ] Alternative band combinations (z, y utilization)
-
-### Future Goals 🎯
-- [ ] Integration into main `astro_vision_composer` module
-- [ ] Automated parameter tuning based on AI feedback
-- [ ] Multi-target comparison and ranking
-- [ ] CMYK composite support with AI guidance
-- [ ] Processing history tracking (JSON log of all runs)
-- [ ] Web interface for batch processing
-- [ ] Real-time processing preview
-
----
-
-## Known Issues & Limitations
-
-### Current Limitations
-1. **Unused bands:** z (866nm) and y (962nm) bands not utilized in RGB composite
-   - Opportunity: Could use for luminance or alternative mappings
-   - AI consistently recommends i-r-g mapping for RGB
-
-2. **Processing time:** ~3 minutes for full pipeline
-   - 5 bands × ~30s each for loading/normalization
-   - 3 AI calls × ~20s each
-   - Processing pipeline ~30s
-   - **Acceptable for single-target processing**
-
-3. **AI server dependency:** Requires separate server process
-   - Need SSH tunnel: `ssh -L 5000:localhost:5000 jakko@192.168.50.194`
-   - Server startup: `python scripts/transformers_pipeline_server.py --port 5000`
-   - **Could benefit from automatic server check/restart**
-
-4. **FITS warnings:** Deprecation warnings for PC matrix keywords
-   - Suppressed via `suppress_warnings.py`
-   - Not a functional issue (WCS still loads correctly)
-
-### Non-Issues (Confirmed Working)
-- ✅ JSON parsing reliability (100% success rate)
-- ✅ Band alignment (all 6284×6320, same WCS)
-- ✅ Memory handling (processed without issues)
-- ✅ AI response quality (consistent, relevant feedback)
-
----
-
-## Critical Success Factors
-
-### What Made This Work
-
-1. **Structured JSON Prompts:**
-   - Provide exact example JSON in prompt
-   - Instruct "respond ONLY with valid JSON"
-   - Include expected schema/format
-   - AI follows format consistently
-
-2. **Physics-Informed Guidance:**
-   - Wavelength information in prompts
-   - Wavelength-to-color mapping principle
-   - AI uses domain knowledge correctly
-
-3. **Modular Processing:**
-   - Separate band loading from composition
-   - Independent processing steps
-   - Each step can be AI-evaluated
-
-4. **Dual Output:**
-   - Visual for human assessment
-   - JSON for programmatic analysis
-   - Enables feedback loops and comparison
-
----
-
-## Quick Start
-
-### Prerequisites
+### Server Access
 ```bash
-# 1. Start AI server (on remote or local)
-python scripts/transformers_pipeline_server.py --port 5000
-
-# 2. SSH tunnel if remote
+# Start SSH tunnel
 ssh -L 5000:localhost:5000 jakko@192.168.50.194
+
+# On remote server
+python scripts/transformers_pipeline_server.py --port 5000
 ```
 
-### Run Baseline Script
+### Test Run
 ```bash
-python test_5band_ai_analysis.py \
-  "C:\Users\jacks\.mission_control\cache\mast_staging\mastDownload\PS1\rings.v3.skycell.2159.034.stk.g" \
-  "C:\Users\jacks\.mission_control\cache\mast_staging\mastDownload\PS1\rings.v3.skycell.2159.034.stk.r" \
-  "C:\Users\jacks\.mission_control\cache\mast_staging\mastDownload\PS1\rings.v3.skycell.2159.034.stk.i" \
-  "C:\Users\jacks\.mission_control\cache\mast_staging\mastDownload\PS1\rings.v3.skycell.2159.034.stk.z" \
-  "C:\Users\jacks\.mission_control\cache\mast_staging\mastDownload\PS1\rings.v3.skycell.2159.034.stk.y" \
-  output.png
+python test_fewshot_astronomy.py "path/to/fits/file"
 ```
 
-### Expected Output
-- **Image:** `output.png` (or specified filename)
-- **JSON:** `5_band_ai.json` (hardcoded in current script)
-- **Console:** Detailed processing log with AI assessments
+---
+
+## Critical Reflections
+
+### What We Got Wrong
+1. **Premature celebration:** Assumed JSON format = working analysis
+2. **Didn't validate:** Should have checked if responses varied with input
+3. **Template problem:** Giving example values caused copying behavior
+
+### What We've Learned
+1. **Vision works:** Model can see, basic tests prove it
+2. **Format teaching works:** JSON structure is teachable
+3. **Content is hard:** Teaching WHAT to analyze vs. HOW to format is the challenge
+
+### Next Steps
+1. **Validate variation:** Test with obviously different images (empty vs. crowded field)
+2. **Minimize copying:** Remove similar features from training examples
+3. **Explicit comparisons:** "This is different from previous images because..."
 
 ---
 
 ## File Reference
 
-### Core Scripts
-- `test_5band_ai_analysis.py` - **BASELINE** - Full 5-band pipeline with AI guidance
-- `scripts/transformers_pipeline_server.py` - Remote AI server
+### Core Code
+- `src/astro_vision_composer/` - Main package
+- `scripts/astro_ai_client_v2.py` - Updated client (uses new server API)
 - `suppress_warnings.py` - FITS warning suppression
 
-### Core Modules
-- `src/astro_vision_composer/fits_processor.py` - FITS handling
-- `src/astro_vision_composer/composite_generator.py` - Image composition
+### Test Scripts
+- `test_ai_vision.py` - **Proof AI can see** (black/white/red test)
+- `test_json_proper_fewshot.py` - **Proof JSON teaching works** (colored squares)
+- `test_fewshot_astronomy.py` - **Current focus** (real astronomical training)
+- `test_5band_v2.py` - Multi-band analysis (needs work)
 
-### Output Examples
-- `5_band_ai.png` - Latest composite image
-- `5_band_ai.json` - Latest structured analysis
-
-### Documentation
-- `README.md` - Project overview and API documentation
-- `SETUP.md` - Installation instructions
-- `CLAUDE.md` - **This file** - Project status and baseline
+### Deprecated/Old
+- `test_5band_ai_analysis.py` - Original (template copying issue)
+- `test_5band_json.py` - First JSON attempt (same issue)
+- `scripts/astro_ai_client.py` - Old single-image API
 
 ---
 
-## Next Steps (Recommended Priority)
+## Honest Assessment
 
-### Immediate (This Week)
-1. **Batch processing script** - Process multiple targets from MAST
-2. **Parameter optimization loop** - Use AI suggestions to refine and reprocess
-3. **Alternative band combinations** - Test z/y bands in different roles
+**We are NOT production-ready.** This is a research/learning project exploring:
+- How to use vision models for scientific image analysis
+- Prompt engineering for structured outputs
+- Few-shot learning limitations and capabilities
 
-### Short-term (This Month)
-4. **Integration into main module** - Move logic into `VisionGuidedCompositor`
-5. **Processing history** - JSON log of all runs for comparison
-6. **Automated server management** - Check/start server automatically
-
-### Long-term
-7. **Web interface** - Browser-based batch processing
-8. **Multi-object comparison** - Rank multiple targets by quality
-9. **Real-time preview** - Adjust parameters with live feedback
+**What works:** Basic image analysis, JSON format learning, server communication
+**What doesn't:** Independent analysis of each image, avoiding template copying
+**What's needed:** Better prompting strategy, validation tests, possibly server improvements
 
 ---
 
-## Changelog
+## Commit History
 
-### 2025-10-23 - BASELINE ESTABLISHED
-- ✅ Created `test_5band_ai_analysis.py` as reference implementation
-- ✅ Successfully processed all 5 PanSTARRS bands (g, r, i, z, y)
-- ✅ Achieved 100% JSON parsing success rate
-- ✅ AI quality assessment: 8/10 overall quality
-- ✅ All processing steps validated as effective by AI
-- ✅ Dual output format (PNG + JSON) working
-- ✅ Documented baseline in CLAUDE.md
+### 2025-10-24: Honest reassessment
+- Identified template copying problem
+- Validated basic AI vision works
+- Tested few-shot JSON training
+- Documented current limitations
+- Reset expectations to realistic goals
 
----
-
-## Critical Insights
-
-### JSON Prompt Engineering
-**The key to reliable AI responses:**
-
-```python
-prompt = """Respond ONLY with valid JSON in this exact format:
-{
-  "quality": 7,
-  "noise_level": "low",
-  "features_visible": ["stars", "nebulosity"]
-}
-
-Do not include any text outside the JSON object."""
-```
-
-**Results:** 100% parsing success vs previous ~60% with freeform text
-
-### Physics-Informed AI
-**The AI understands wavelength-to-color mapping:**
-- Correctly maps longer wavelengths (i-band 752nm) → red channel
-- Shorter wavelengths (g-band 481nm) → blue channel
-- Provides reasoning based on physics, not just aesthetics
-
-### Processing Pipeline Validation
-**All steps confirmed effective:**
-- Zscale: "working well"
-- CLAHE (0.03): "good contrast"
-- Unsharp mask (σ=2, amount=0.5): "effective"
-- Star boost (99th percentile, 1.3x): "effective"
-- Luminance masking (5th percentile): "effective"
-
-**No parameter changes recommended** - current pipeline is well-tuned
+### 2025-10-23: Initial (false) baseline
+- Created infrastructure
+- Got JSON responses (but copying templates)
+- Documented as "working" (premature)
 
 ---
 
-## Contact & Attribution
-
-**Model:** unsloth/Llama-3.2-11B-Vision-Instruct-unsloth-bnb-4bit
-**Data:** Pan-STARRS1 via MAST Archive
-**Processing:** Astropy, scikit-image, Pillow
-**Baseline Established:** 2025-10-23
-
----
-
-*This baseline represents a working, validated AI-guided astronomical image processing pipeline with structured feedback and physics-informed decision making.*
+*This project is about learning and experimentation. We're building understanding, not claiming solved problems.*
