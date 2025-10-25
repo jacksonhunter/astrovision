@@ -13,6 +13,7 @@ from .mission_adapters import (
     get_mission_adapter
 )
 from .quality_assessor import QualityAssessor, QualityReport
+from .calibrator import Calibrator
 
 __all__ = [
     'FITSLoader',
@@ -23,5 +24,6 @@ __all__ = [
     'HSTAdapter',
     'get_mission_adapter',
     'QualityAssessor',
-    'QualityReport'
+    'QualityReport',
+    'Calibrator'
 ]
