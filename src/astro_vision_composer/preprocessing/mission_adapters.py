@@ -80,6 +80,80 @@ class MissionAdapter(ABC):
         # Default implementation - override in subclasses with mission-specific flags
         return [f"FLAG_{i}" for i in range(16) if dq_value & (1 << i)]
 
+    def get_wcs_characteristics(
+        self,
+        header: fits.Header,
+        instrument: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Get mission-specific WCS quality characteristics.
+
+        This method extracts WCS-related information from FITS headers to assess
+        the quality and characteristics of the astrometric solution. It is separate
+        from DQ flags and focuses on geometric/astrometric properties.
+
+        Implementation Strategy (Option A - Header-driven):
+        - Extract distortion model info from headers (SIP, TPV, etc.)
+        - No assumptions about what "should" be there
+        - Let real data teach us the patterns
+
+        Args:
+            header: FITS header object
+            instrument: Optional instrument name for instrument-specific logic
+
+        Returns:
+            Dictionary with:
+            - 'distortion_model': 'SIP'|'TPV'|'polynomial'|'none'|'unknown'
+            - 'distortion_magnitude': 'low'|'moderate'|'high'|'unknown'
+            - 'astrometric_quality': 'excellent'|'good'|'fair'|'poor'|'unknown'
+            - 'notes': List[str] - Additional information
+            - 'warnings': List[str] - Potential issues
+        """
+        result = {
+            'distortion_model': 'unknown',
+            'distortion_magnitude': 'unknown',
+            'astrometric_quality': 'unknown',
+            'notes': [],
+            'warnings': []
+        }
+
+        # Check for SIP (Simple Imaging Polynomial) distortion keywords
+        if 'A_ORDER' in header or 'B_ORDER' in header:
+            result['distortion_model'] = 'SIP'
+            result['notes'].append('SIP distortion coefficients present')
+
+            # Check order of SIP polynomial
+            a_order = header.get('A_ORDER', 0)
+            b_order = header.get('B_ORDER', 0)
+            max_order = max(a_order, b_order)
+
+            if max_order >= 4:
+                result['distortion_magnitude'] = 'high'
+                result['notes'].append(f'High-order SIP polynomial (order {max_order})')
+            elif max_order >= 2:
+                result['distortion_magnitude'] = 'moderate'
+            elif max_order > 0:
+                result['distortion_magnitude'] = 'low'
+
+        # Check for TPV (Tangent Plane with PV distortion) projection
+        ctype1 = header.get('CTYPE1', '')
+        if 'TPV' in ctype1:
+            result['distortion_model'] = 'TPV'
+            result['notes'].append('TPV projection includes distortion model')
+            # TPV typically handles moderate distortion well
+            result['distortion_magnitude'] = 'low'
+
+        # Check for other distortion-related keywords
+        if 'DISTORT' in header or 'D2IMERR1' in header:
+            result['notes'].append('Additional distortion keywords present')
+
+        # If no distortion model detected, assume none
+        if result['distortion_model'] == 'unknown':
+            result['distortion_model'] = 'none'
+            result['distortion_magnitude'] = 'none'
+
+        # Default implementation - override in subclasses for mission-specific logic
+        return result
+
     def get_all_extensions_info(self, hdul: fits.HDUList) -> Dict[str, Any]:
         """Get comprehensive information about all extensions in the file.
 
@@ -189,6 +263,49 @@ class PanSTARRSAdapter(MissionAdapter):
                 return (hdu.name, hdu.ver)
 
         return None
+
+    def get_wcs_characteristics(
+        self,
+        header: fits.Header,
+        instrument: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Get WCS characteristics for PanSTARRS data.
+
+        PanSTARRS uses TPV projection which includes distortion corrections.
+        Stack products have excellent astrometry from multi-epoch co-addition.
+
+        Args:
+            header: FITS header object
+            instrument: Not used for PanSTARRS
+
+        Returns:
+            Dictionary with WCS characteristics
+        """
+        # Start with base implementation
+        result = super().get_wcs_characteristics(header, instrument)
+
+        # PanSTARRS-specific checks
+        projcell = header.get('PROJCELL', header.get('PROJECT', ''))
+
+        if 'stack' in str(projcell).lower():
+            result['astrometric_quality'] = 'excellent'
+            result['notes'].append(
+                'PanSTARRS stack - multi-epoch co-addition provides excellent astrometry'
+            )
+        elif 'warp' in str(projcell).lower():
+            result['astrometric_quality'] = 'good'
+            result['notes'].append('PanSTARRS warp - single-epoch astrometry')
+        else:
+            result['astrometric_quality'] = 'good'
+
+        # Check for TPV projection (typical for PanSTARRS)
+        ctype1 = header.get('CTYPE1', '')
+        if 'TPV' in ctype1 and result['distortion_model'] == 'none':
+            result['distortion_model'] = 'TPV'
+            result['distortion_magnitude'] = 'low'
+            result['notes'].append('TPV projection handles field distortion')
+
+        return result
 
 
 class JWSTAdapter(MissionAdapter):
@@ -312,6 +429,64 @@ class JWSTAdapter(MissionAdapter):
                 flags.append(description)
         return flags
 
+    def get_wcs_characteristics(
+        self,
+        header: fits.Header,
+        instrument: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Get WCS characteristics for JWST data.
+
+        JWST pipeline includes comprehensive distortion corrections.
+        WCS quality is generally excellent for all instruments.
+
+        Args:
+            header: FITS header object
+            instrument: JWST instrument name (e.g., 'NIRCAM', 'MIRI', 'NIRSPEC')
+
+        Returns:
+            Dictionary with WCS characteristics
+        """
+        # Start with base implementation
+        result = super().get_wcs_characteristics(header, instrument)
+
+        # JWST data typically has excellent WCS
+        result['astrometric_quality'] = 'excellent'
+        result['notes'].append('JWST pipeline includes full distortion correction')
+
+        # Instrument-specific checks
+        inst = (instrument or header.get('INSTRUME', '')).upper()
+
+        if 'NIRCAM' in inst:
+            # NIRCam has low distortion with SIP corrections
+            if result['distortion_model'] == 'SIP':
+                result['distortion_magnitude'] = 'low'
+                result['notes'].append('NIRCam SIP distortion correction applied')
+            elif result['distortion_model'] == 'none':
+                result['warnings'].append(
+                    'NIRCam distortion keywords missing - '
+                    'corners may have positional errors up to 0.5 pixels'
+                )
+                result['distortion_magnitude'] = 'moderate'
+
+        elif 'MIRI' in inst:
+            # MIRI has more significant field distortion
+            result['distortion_magnitude'] = 'moderate'
+            result['notes'].append(
+                'MIRI has significant field distortion - '
+                'use reproject_exact for photometry'
+            )
+
+        elif 'NIRISS' in inst or 'NIRSPEC' in inst:
+            result['distortion_magnitude'] = 'low'
+            result['notes'].append(f'{inst} distortion corrections applied by pipeline')
+
+        # Check for calibration level
+        cal_level = header.get('CAL_VER', '')
+        if cal_level:
+            result['notes'].append(f'JWST calibration pipeline version: {cal_level}')
+
+        return result
+
 
 class HSTAdapter(MissionAdapter):
     """Adapter for Hubble Space Telescope (HST) FITS files.
@@ -386,6 +561,65 @@ class HSTAdapter(MissionAdapter):
             if dq_value & (1 << bit):
                 flags.append(description)
         return flags
+
+    def get_wcs_characteristics(
+        self,
+        header: fits.Header,
+        instrument: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Get WCS characteristics for HST data.
+
+        HST WCS quality varies by instrument and whether the data has been drizzled.
+        SIP distortion corrections are standard for most modern HST data.
+
+        Args:
+            header: FITS header object
+            instrument: HST instrument name (e.g., 'ACS', 'WFC3', 'WFPC2')
+
+        Returns:
+            Dictionary with WCS characteristics
+        """
+        # Start with base implementation
+        result = super().get_wcs_characteristics(header, instrument)
+
+        # Check if drizzled product
+        drizcorr = header.get('DRIZCORR', '')
+        if drizcorr == 'COMPLETE':
+            result['astrometric_quality'] = 'excellent'
+            result['notes'].append('Drizzled product - high quality WCS')
+        else:
+            result['astrometric_quality'] = 'good'
+
+        # Instrument-specific checks
+        inst = (instrument or header.get('INSTRUME', '')).upper()
+
+        if 'ACS' in inst:
+            result['notes'].append('ACS WCS includes SIP distortion correction')
+            if result['distortion_model'] == 'SIP':
+                result['distortion_magnitude'] = 'low'
+
+        elif 'WFC3' in inst:
+            # Check if UVIS or IR channel
+            detector = header.get('DETECTOR', '').upper()
+            if 'UVIS' in detector:
+                result['distortion_magnitude'] = 'low'
+                result['notes'].append('WFC3/UVIS has low geometric distortion')
+            elif 'IR' in detector:
+                result['distortion_magnitude'] = 'moderate'
+                result['notes'].append('WFC3/IR has moderate geometric distortion')
+
+        elif 'WFPC2' in inst:
+            result['warnings'].append(
+                'WFPC2 has 4 chips with different pixel scales '
+                '(0.046 vs 0.0996 arcsec/pixel) - requires special handling'
+            )
+            result['distortion_magnitude'] = 'high'
+            result['astrometric_quality'] = 'fair'
+
+        elif 'STIS' in inst or 'NICMOS' in inst or 'FOS' in inst:
+            result['notes'].append(f'{inst} astrometry')
+
+        return result
 
 
 # Factory function to get appropriate adapter
