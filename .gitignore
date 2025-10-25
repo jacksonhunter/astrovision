@@ -37,6 +37,7 @@ outputs/
 *.bmp
 *.tif
 *.tiff
+*.psd
 
 # FITS and astronomical data files
 *.fits

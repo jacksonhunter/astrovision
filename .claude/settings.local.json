@@ -11,7 +11,16 @@
       "Bash(mkdir:*)",
       "Bash(git mv:*)",
       "Bash(git add:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(xargs:*)",
+      "Bash(git rm:*)",
+      "Bash(awk:*)",
+      "Read(//c/Users/jacks/.mission_control/NOIRLab/**)",
+      "Bash(find:*)",
+      "Bash(git check-ignore:*)",
+      "Bash(cat:*)",
+      "Bash(git log:*)"
     ],
     "deny": [],
     "ask": []
