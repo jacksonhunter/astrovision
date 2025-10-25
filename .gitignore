@@ -63,9 +63,13 @@ outputs/
 *.7z
 *.rar
 
-# Data directories
-data/
-raw_data/
-processed_data/
-raw_fits/
-calibration_data/
+# Data directories (root level only to allow examples/data/README.md)
+/data/
+/raw_data/
+/processed_data/
+/raw_fits/
+/calibration_data/
+
+# Example data - ignore subdirectories but allow README
+examples/data/*/
+!examples/data/README.md
