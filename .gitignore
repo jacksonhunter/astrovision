@@ -27,8 +27,45 @@ Thumbs.db
 # Project outputs
 palette_output/
 palette_output_v2/
-outputs/*.png
-outputs/*.jpg
-outputs/*.json
+outputs/
+
+# Image and data files
 *.png
 *.jpg
+*.jpeg
+*.gif
+*.bmp
+*.tif
+*.tiff
+
+# FITS and astronomical data files
+*.fits
+*.fit
+*.fts
+*.fz
+*.fits.gz
+
+# HDF5 and other large data formats
+*.hdf5
+*.h5
+*.hdf
+*.nc
+*.zarr
+
+# Numpy arrays
+*.npy
+*.npz
+
+# Compressed archives (often contain large data)
+*.tar
+*.tar.gz
+*.zip
+*.7z
+*.rar
+
+# Data directories
+data/
+raw_data/
+processed_data/
+raw_fits/
+calibration_data/
