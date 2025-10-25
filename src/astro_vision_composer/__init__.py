@@ -6,11 +6,20 @@ to create visually stunning planetarium-style composite images.
 
 from .fits_processor import FITSImageProcessor
 from .composite_generator import CompositeImageGenerator
-from .vision_compositor import VisionGuidedCompositor
+
+# Try to import VisionGuidedCompositor (requires vision server)
+try:
+    from .vision_compositor import VisionGuidedCompositor
+    _has_vision = True
+except ImportError:
+    VisionGuidedCompositor = None
+    _has_vision = False
 
 __version__ = "0.1.0"
 __all__ = [
     "FITSImageProcessor",
     "CompositeImageGenerator",
-    "VisionGuidedCompositor"
 ]
+
+if _has_vision:
+    __all__.append("VisionGuidedCompositor")

@@ -10,7 +10,8 @@
       "Bash(python test_fewshot_astronomy.py:*)",
       "Bash(mkdir:*)",
       "Bash(git mv:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
     ],
     "deny": [],
     "ask": []
