@@ -2,12 +2,19 @@
 
 This module provides the Enhancer class for various image enhancement techniques
 including CLAHE, unsharp masking, and star highlighting.
+
+.. warning::
+    CLAHE implementation is experimental and may not be suitable for astronomical data.
+    See individual method documentation for quality warnings.
 """
 
 from typing import Optional, Tuple
 import numpy as np
 from scipy import ndimage
 import logging
+import warnings
+
+from ..utilities.decorators import experimental, requires_validation
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +41,16 @@ class Enhancer:
         """Initialize the Enhancer."""
         pass
 
+    @experimental(
+        quality="LOW",
+        warning=(
+            "CLAHE implementation needs astronomical-specific tuning. "
+            "May over-enhance noise in low-SNR regions. "
+            "Does not differentiate between stars and nebulosity. "
+            "Consider using unsharp_mask() or external tools instead."
+        )
+    )
+    @requires_validation("Validate on real astronomical data before production use")
     def apply_clahe(
         self,
         data: np.ndarray,
@@ -42,6 +59,23 @@ class Enhancer:
         nbins: int = 256
     ) -> np.ndarray:
         """Apply CLAHE (Contrast Limited Adaptive Histogram Equalization).
+
+        .. danger::
+            **LOW QUALITY IMPLEMENTATION**
+
+            This CLAHE implementation has significant issues for astronomical data:
+
+            * Uses default skimage parameters not optimized for astronomy
+            * No star masking - treats point sources same as extended emission
+            * May severely over-enhance noise in low-SNR regions
+            * Kernel size auto-calculation is simplistic
+            * No SNR-based adaptive clipping
+
+            **Recommended alternatives:**
+
+            * Use ``unsharp_mask()`` for controlled sharpening
+            * Apply CLAHE in external tools (PixInsight, GIMP, Photoshop)
+            * Implement custom local contrast with star masking
 
         CLAHE enhances local contrast while preventing over-amplification of noise.
         It's particularly effective for bringing out faint structures.
@@ -59,6 +93,7 @@ class Enhancer:
             ImportError: If scikit-image is not installed
 
         Example:
+            >>> # NOT RECOMMENDED - Use with extreme caution
             >>> enhanced = enhancer.apply_clahe(
             ...     normalized_data,
             ...     kernel_size=64,
@@ -94,6 +129,19 @@ class Enhancer:
     ) -> np.ndarray:
         """Apply unsharp masking to enhance fine details.
 
+        .. note::
+            **ACCEPTABLE QUALITY**: This is a basic but reliable implementation
+            suitable for most astronomical use cases. This is the recommended
+            alternative to CLAHE for enhancing fine details.
+
+            Limitations:
+
+            * Single-scale only (no multi-scale sharpening)
+            * No luminance masking (affects all pixels equally)
+            * May enhance noise in low-SNR regions
+
+            For advanced sharpening, consider external tools or multi-scale approaches.
+
         Unsharp masking subtracts a blurred version of the image to enhance edges
         and fine structures. This is one of the most commonly used enhancement
         techniques in astrophotography.
@@ -107,7 +155,7 @@ class Enhancer:
             Sharpened image data
 
         Example:
-            >>> # Moderate sharpening
+            >>> # Moderate sharpening (RECOMMENDED)
             >>> sharpened = enhancer.unsharp_mask(data, sigma=2.0, strength=1.5)
             >>>
             >>> # Aggressive sharpening

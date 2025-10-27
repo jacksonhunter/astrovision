@@ -2,11 +2,19 @@
 
 This module provides the ColorBalancer class for adjusting color balance
 in astronomical RGB composites.
+
+.. warning::
+    Color balance operations are NOT photometrically accurate and destroy
+    scientific data integrity. Use only for aesthetic/presentation purposes.
+    Most methods use naive RGB operations without proper color space conversion.
 """
 
 from typing import Tuple, Optional
 import numpy as np
 import logging
+import warnings
+
+from ..utilities.decorators import experimental, deprecated
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +82,14 @@ class ColorBalancer:
 
         return balanced
 
+    @experimental(
+        quality="LOW",
+        warning=(
+            "Uses simple channel scaling without proper color space conversion. "
+            "Not photometrically accurate. Destroys color calibration. "
+            "Consider using external tools (Photoshop, GIMP) for proper color correction."
+        )
+    )
     def white_balance(
         self,
         rgb: np.ndarray,
@@ -81,6 +97,20 @@ class ColorBalancer:
         target_color: Tuple[float, float, float] = (1.0, 1.0, 1.0)
     ) -> np.ndarray:
         """Apply white balance correction.
+
+        .. danger::
+            **NAIVE IMPLEMENTATION - NOT PRODUCTION READY**
+
+            This white balance implementation has serious limitations:
+
+            * Simple RGB channel scaling without color space conversion
+            * No perceptual color space support (LAB, LCh)
+            * Destroys photometric color information
+            * No validation against astronomical color indices
+
+            **For scientific use:** DO NOT USE - preserves no photometric data
+
+            **For aesthetic use:** Consider external tools like Photoshop or GIMP
 
         Adjusts colors so that a reference point (or the image average)
         becomes the target color (usually white/gray).
@@ -94,7 +124,7 @@ class ColorBalancer:
             White-balanced RGB image
 
         Example:
-            >>> # Balance using image average
+            >>> # Balance using image average (USE WITH CAUTION)
             >>> balanced = balancer.white_balance(rgb)
             >>>
             >>> # Balance using specific point
@@ -126,12 +156,31 @@ class ColorBalancer:
         # Apply weights
         return self.balance_channels(rgb, r_weight=weights[0], g_weight=weights[1], b_weight=weights[2])
 
+    @experimental(
+        quality="MEDIUM",
+        warning=(
+            "Saturation adjustment clips values rather than properly preserving luminance. "
+            "May cause color shifts and loss of detail in highly saturated regions."
+        )
+    )
     def adjust_saturation(
         self,
         rgb: np.ndarray,
         factor: float = 1.0
     ) -> np.ndarray:
         """Adjust color saturation.
+
+        .. warning::
+            **BASIC IMPLEMENTATION**
+
+            This saturation adjustment has limitations:
+
+            * Clips values instead of proper luminance preservation
+            * Uses RGB color space instead of HSL/HSV
+            * May lose detail in highly saturated areas
+
+            For better results, convert to HSL color space, adjust S channel,
+            and convert back to RGB.
 
         Args:
             rgb: RGB image array
@@ -161,12 +210,33 @@ class ColorBalancer:
 
         return np.clip(adjusted, 0, 1)
 
+    @experimental(
+        quality="LOW",
+        warning=(
+            "Uses ad-hoc RGB channel shifts without proper color temperature model. "
+            "Not based on blackbody radiation or standard illuminants. "
+            "Results are unpredictable and non-physical."
+        )
+    )
     def adjust_color_temperature(
         self,
         rgb: np.ndarray,
         temperature: float = 0.0
     ) -> np.ndarray:
         """Adjust color temperature.
+
+        .. danger::
+            **AD-HOC IMPLEMENTATION**
+
+            This temperature adjustment is NOT based on proper color science:
+
+            * No blackbody radiation model
+            * No CIE standard illuminants (D65, D50, etc.)
+            * Simple RGB channel multiplication (non-physical)
+            * Arbitrary scaling factors (0.3) with no scientific basis
+
+            **Recommended:** Use proper color management tools or
+            implement true color temperature based on Planck's law.
 
         Args:
             rgb: RGB image array
@@ -176,7 +246,7 @@ class ColorBalancer:
             Temperature-adjusted RGB image
 
         Example:
-            >>> # Make image warmer (more red)
+            >>> # Make image warmer (more red) - USE WITH CAUTION
             >>> warmer = balancer.adjust_color_temperature(rgb, temperature=0.2)
             >>>
             >>> # Make image cooler (more blue)

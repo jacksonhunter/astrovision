@@ -19,7 +19,8 @@ dependencies = [
     "scipy>=1.11.0",
     "scikit-image>=0.21.0",
     "opencv-python>=4.8.0",
-    "reproject>=0.10.0"
+    "reproject>=0.10.0",
+    "ccdproc>=2.4.0"
 ]
 
 [project.optional-dependencies]

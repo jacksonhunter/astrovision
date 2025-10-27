@@ -22,13 +22,13 @@ logger = logging.getLogger(__name__)
 
 # Import astropy visualization for advanced workflows (safe - external dependency)
 from astropy.visualization import (
-    ZScaleInterval, AsymmetricPercentileInterval,
-    AsinhStretch, HistEqStretch, LinearStretch,
-    LuptonAsinhZscaleStretch
+    ZScaleInterval, AsymmetricPercentileInterval, MinMaxInterval, PercentileInterval,
+    AsinhStretch, HistEqStretch, LinearStretch, SqrtStretch, SquaredStretch, LogStretch,
+    LuptonAsinhZscaleStretch, ImageNormalize
 )
 
 
-WorkflowMode = Literal['scientific', 'sdss', 'aesthetic', 'narrowband', 'custom']
+WorkflowMode = Literal['scientific', 'sdss', 'aesthetic', 'narrowband', 'custom', 'manual']
 
 
 class ProcessingPipeline:
@@ -40,6 +40,7 @@ class ProcessingPipeline:
     - **aesthetic**: Maximum impact (Percentile + HistEq + Lupton)
     - **narrowband**: Per-channel optimization (false-color)
     - **custom**: User controls everything
+    - **manual**: Complete control with per-band normalization/stretching
 
     Example:
         >>> pipeline = ProcessingPipeline(mode='scientific')
@@ -48,13 +49,47 @@ class ProcessingPipeline:
         ...     fits_files=['r.fits', 'g.fits', 'b.fits'],
         ...     output_dir='output/'
         ... )
+
+        >>> # Manual mode with custom per-band processing
+        >>> pipeline = ProcessingPipeline(mode='manual')
+        >>> normalizations = [
+        ...     ImageNormalize(interval=ZScaleInterval(), stretch=AsinhStretch(a=0.1)),
+        ...     ImageNormalize(interval=PercentileInterval(99), stretch=LogStretch(a=1000)),
+        ...     ImageNormalize(interval=MinMaxInterval(), stretch=LinearStretch())
+        ... ]
+        >>> rgb = pipeline.process_with_normalizations(
+        ...     fits_files=['ha.fits', 'oiii.fits', 'sii.fits'],
+        ...     normalizations=normalizations
+        ... )
     """
 
-    def __init__(self, mode: WorkflowMode = 'scientific'):
+    def __init__(
+        self,
+        mode: WorkflowMode = 'scientific',
+        enable_experimental: bool = False,
+        calibration_dir: Optional[Union[str, Path]] = None
+    ):
         """Initialize the ProcessingPipeline.
 
         Args:
-            mode: Workflow mode (scientific, sdss, aesthetic, narrowband, custom)
+            mode: Workflow mode (scientific, sdss, aesthetic, narrowband, custom, manual)
+            enable_experimental: Enable experimental/low-quality features (default: False)
+            calibration_dir: Directory containing raw calibration files (bias, dark, flat)
+                           If provided, enables automatic calibration of raw data
+
+        .. warning::
+            Experimental features (CLAHE, color balance) are disabled by default.
+            Only enable if you understand the quality issues. See QUALITY.md for details.
+
+        Example:
+            >>> # For pre-calibrated data
+            >>> pipeline = ProcessingPipeline(mode='scientific')
+            >>>
+            >>> # For raw CCD data with calibration frames
+            >>> pipeline = ProcessingPipeline(
+            ...     mode='scientific',
+            ...     calibration_dir='raw_data/calibration/'
+            ... )
         """
         # Lazy imports to avoid circular dependency
         from astro_vision_composer.preprocessing import FITSLoader, QualityAssessor
@@ -64,6 +99,7 @@ class ProcessingPipeline:
         )
 
         self.mode = mode
+        self.enable_experimental = enable_experimental
         self.history = HistoryTracker()
 
         # Initialize components
@@ -75,17 +111,44 @@ class ProcessingPipeline:
         self.compositor = Compositor()
         self.exporter = ImageExporter()
 
+        # Initialize calibration manager if calibration directory provided
+        self.calib_manager = None
+        if calibration_dir:
+            try:
+                from astro_vision_composer.preprocessing import CalibrationManager
+                self.calib_manager = CalibrationManager(calibration_dir)
+                logger.info(f"Calibration manager initialized: {calibration_dir}")
+            except ImportError as e:
+                logger.warning(
+                    f"Could not initialize CalibrationManager: {e}. "
+                    "Install ccdproc for raw data calibration: pip install ccdproc"
+                )
+            except Exception as e:
+                logger.warning(f"Failed to initialize CalibrationManager: {e}")
+
         # Workflow state
         self.phase1_data = {}
         self.phase2_data = {}
         self.phase3_rgb = None
 
-        logger.info(f"Pipeline initialized with mode: {mode}")
+        # Warn if experimental features are enabled
+        if enable_experimental:
+            import warnings
+            warnings.warn(
+                "Experimental features enabled. These include low-quality components "
+                "(CLAHE, color balance) that may produce poor results. "
+                "See QUALITY.md for known issues.",
+                UserWarning,
+                stacklevel=2
+            )
+
+        logger.info(f"Pipeline initialized with mode: {mode}, experimental: {enable_experimental}, calibration: {calibration_dir is not None}")
 
     def process_to_rgb(
         self,
         fits_files: List[Union[str, Path]],
         output_dir: Optional[Union[str, Path]] = None,
+        auto_calibrate: bool = True,
         **kwargs
     ) -> np.ndarray:
         """Process FITS files through complete pipeline to RGB composite.
@@ -95,16 +158,28 @@ class ProcessingPipeline:
         Args:
             fits_files: List of FITS file paths (at least 3 for RGB)
             output_dir: Optional output directory for intermediate files
+            auto_calibrate: Automatically apply calibration if CalibrationManager available
             **kwargs: Override workflow parameters (interval, stretch, etc.)
 
         Returns:
             RGB image array (float, [0, 1] range)
 
         Example:
+            >>> # Pre-calibrated data
             >>> pipeline = ProcessingPipeline(mode='scientific')
             >>> rgb = pipeline.process_to_rgb(
             ...     fits_files=['502nmos.fits', '656nmos.fits', '673nmos.fits'],
             ...     output_dir='output/'
+            ... )
+            >>>
+            >>> # Raw data with automatic calibration
+            >>> pipeline = ProcessingPipeline(
+            ...     mode='scientific',
+            ...     calibration_dir='raw_data/calibration/'
+            ... )
+            >>> rgb = pipeline.process_to_rgb(
+            ...     fits_files=['sci_r.fits', 'sci_g.fits', 'sci_b.fits'],
+            ...     auto_calibrate=True
             ... )
         """
         if len(fits_files) < 3:
@@ -112,9 +187,17 @@ class ProcessingPipeline:
 
         logger.info(f"Starting {self.mode} workflow with {len(fits_files)} files")
 
-        # Phase 1: Load and calibrate (simplified for now)
+        # Phase 0: Create master calibrations if needed
+        if auto_calibrate and self.calib_manager:
+            logger.info("Phase 0: Creating master calibration frames")
+            try:
+                self.calib_manager.create_master_calibrations()
+            except Exception as e:
+                logger.warning(f"Could not create master calibrations: {e}")
+
+        # Phase 1: Load and calibrate
         logger.info("Phase 1: Loading FITS files")
-        self.phase1_data = self._load_fits_files(fits_files)
+        self.phase1_data = self._load_fits_files(fits_files, auto_calibrate=auto_calibrate)
 
         # Phase 2: Normalize and stretch
         logger.info("Phase 2: Normalize and stretch")
@@ -129,7 +212,7 @@ class ProcessingPipeline:
         self.phase3_rgb = self._compose_rgb(
             self.phase2_data,
             compositor=kwargs.get('compositor', 'auto'),
-            stretch_object=kwargs.get('stretch_object', 'auto')
+            lupton_workflow=kwargs.get('lupton_workflow', 'auto')
         )
 
         # Export if output directory provided
@@ -140,11 +223,253 @@ class ProcessingPipeline:
 
         return self.phase3_rgb
 
-    def _load_fits_files(self, fits_files: List[Union[str, Path]]) -> Dict:
-        """Load FITS files (Phase 1 simplified).
+    def process_with_normalizations(
+        self,
+        fits_files: List[Union[str, Path]],
+        normalizations: List[ImageNormalize],
+        compositor: str = 'simple',
+        output_dir: Optional[Union[str, Path]] = None,
+        **kwargs
+    ) -> np.ndarray:
+        """Process FITS files with explicit per-band normalizations (manual mode).
+
+        This method provides complete control over each band's processing,
+        allowing different intervals and stretches for each channel.
+
+        Args:
+            fits_files: List of FITS file paths (must match normalizations length)
+            normalizations: List of ImageNormalize objects, one per band
+            compositor: RGB compositor method ('lupton' or 'simple')
+            output_dir: Optional output directory for results
+            **kwargs: Additional compositor options
+
+        Returns:
+            RGB image array (float, [0, 1] range)
+
+        Example:
+            >>> from astropy.visualization import (
+            ...     ImageNormalize, ZScaleInterval, PercentileInterval,
+            ...     AsinhStretch, LogStretch
+            ... )
+            >>> pipeline = ProcessingPipeline(mode='manual')
+            >>> # Different processing per narrowband filter
+            >>> normalizations = [
+            ...     ImageNormalize(interval=ZScaleInterval(), stretch=AsinhStretch(a=0.1)),  # Ha
+            ...     ImageNormalize(interval=PercentileInterval(99.5), stretch=LogStretch()),  # OIII
+            ...     ImageNormalize(interval=PercentileInterval(98), stretch=AsinhStretch())   # SII
+            ... ]
+            >>> rgb = pipeline.process_with_normalizations(
+            ...     fits_files=['ha.fits', 'oiii.fits', 'sii.fits'],
+            ...     normalizations=normalizations,
+            ...     compositor='simple'
+            ... )
+        """
+        if len(fits_files) != len(normalizations):
+            raise ValueError(f"Number of FITS files ({len(fits_files)}) must match "
+                           f"number of normalizations ({len(normalizations)})")
+
+        if len(fits_files) < 3:
+            raise ValueError(f"Need at least 3 FITS files for RGB, got {len(fits_files)}")
+
+        logger.info(f"Starting manual workflow with {len(fits_files)} files")
+
+        # Phase 1: Load FITS files
+        logger.info("Phase 1: Loading FITS files")
+        self.phase1_data = self._load_fits_files(fits_files)
+
+        # Phase 2: Apply custom normalizations
+        logger.info("Phase 2: Applying custom normalizations per band")
+        self.phase2_data = self._apply_manual_normalizations(
+            self.phase1_data,
+            normalizations
+        )
+
+        # Phase 3: Compose RGB
+        logger.info("Phase 3: Compose RGB")
+        self.phase3_rgb = self._compose_rgb(
+            self.phase2_data,
+            compositor=compositor,
+            lupton_workflow='pre_stretched' if compositor == 'lupton' else 'auto'
+        )
+
+        # Export if requested
+        if output_dir:
+            output_dir = Path(output_dir)
+            output_dir.mkdir(parents=True, exist_ok=True)
+            self._export_results(output_dir)
+
+        return self.phase3_rgb
+
+    def process_with_arrays(
+        self,
+        fits_files: List[Union[str, Path]],
+        intervals: List,
+        stretches: List,
+        compositor: str = 'simple',
+        output_dir: Optional[Union[str, Path]] = None,
+        **kwargs
+    ) -> np.ndarray:
+        """Process FITS files with separate interval and stretch arrays.
+
+        Convenience method that constructs ImageNormalize objects from
+        separate arrays of intervals and stretches.
 
         Args:
             fits_files: List of FITS file paths
+            intervals: List of astropy interval objects
+            stretches: List of astropy stretch objects
+            compositor: RGB compositor method
+            output_dir: Optional output directory
+            **kwargs: Additional options
+
+        Returns:
+            RGB image array
+
+        Example:
+            >>> from astropy.visualization import (
+            ...     ZScaleInterval, PercentileInterval,
+            ...     AsinhStretch, LinearStretch
+            ... )
+            >>> pipeline = ProcessingPipeline(mode='manual')
+            >>> intervals = [ZScaleInterval(), PercentileInterval(99.5), PercentileInterval(98)]
+            >>> stretches = [AsinhStretch(), LinearStretch(), AsinhStretch()]
+            >>> rgb = pipeline.process_with_arrays(
+            ...     fits_files=['r.fits', 'g.fits', 'b.fits'],
+            ...     intervals=intervals,
+            ...     stretches=stretches
+            ... )
+        """
+        if len(intervals) != len(stretches):
+            raise ValueError("Intervals and stretches must have same length")
+
+        if len(fits_files) != len(intervals):
+            raise ValueError(f"Number of FITS files ({len(fits_files)}) must match "
+                           f"number of intervals/stretches ({len(intervals)})")
+
+        # Create ImageNormalize objects from arrays
+        normalizations = []
+        for i, (interval, stretch) in enumerate(zip(intervals, stretches)):
+            # Load data to create normalization
+            # Note: This is a simplified approach, actual implementation would be more efficient
+            normalizations.append(ImageNormalize(interval=interval, stretch=stretch))
+
+        return self.process_with_normalizations(
+            fits_files=fits_files,
+            normalizations=normalizations,
+            compositor=compositor,
+            output_dir=output_dir,
+            **kwargs
+        )
+
+    def _apply_manual_normalizations(
+        self,
+        phase1_data: Dict,
+        normalizations: List[ImageNormalize]
+    ) -> Dict:
+        """Apply manual normalizations to each band.
+
+        Args:
+            phase1_data: Loaded FITS data
+            normalizations: List of ImageNormalize objects
+
+        Returns:
+            Dictionary with normalized data
+        """
+        processed = {}
+
+        # Convert phase1_data keys to list to ensure order
+        bands = list(phase1_data.keys())
+
+        for i, (name, norm) in enumerate(zip(bands, normalizations)):
+            data = phase1_data[name]['data']
+
+            # Apply the normalization
+            processed_data = norm(data)
+
+            logger.debug(f"  {name}: Applied custom normalization {i+1}/{len(normalizations)}")
+
+            processed[name] = {
+                'normalized': processed_data,
+                'stretched': processed_data,  # Already includes stretch from ImageNormalize
+                'metadata': phase1_data[name]['metadata'],
+                'norm_object': norm,
+                'interval_object': norm.interval,
+                'stretch_object': norm.stretch
+            }
+
+        self.history.record('manual_normalize', {
+            'count': len(normalizations)
+        }, 'Phase2')
+
+        return processed
+
+    def apply_enhancement(
+        self,
+        data: np.ndarray,
+        method: str = 'unsharp_mask',
+        **kwargs
+    ) -> np.ndarray:
+        """Apply enhancement techniques with quality warnings.
+
+        Args:
+            data: Input image data
+            method: Enhancement method ('unsharp_mask', 'clahe', etc.)
+            **kwargs: Method-specific parameters
+
+        Returns:
+            Enhanced image data
+
+        Raises:
+            RuntimeError: If experimental methods used without enabling
+
+        Example:
+            >>> # Safe enhancement
+            >>> enhanced = pipeline.apply_enhancement(data, method='unsharp_mask', sigma=2.0)
+            >>>
+            >>> # Experimental (requires enable_experimental=True)
+            >>> enhanced = pipeline.apply_enhancement(data, method='clahe')
+        """
+        # List of experimental/low-quality methods
+        experimental_methods = ['clahe', 'white_balance', 'color_temperature']
+
+        if method in experimental_methods and not self.enable_experimental:
+            raise RuntimeError(
+                f"Enhancement method '{method}' is experimental/low-quality and disabled by default. "
+                f"To use it, initialize pipeline with enable_experimental=True and read QUALITY.md first."
+            )
+
+        # Import enhancer only when needed
+        from astro_vision_composer.processing import Enhancer
+        enhancer = Enhancer()
+
+        # Apply the enhancement
+        if method == 'unsharp_mask':
+            return enhancer.unsharp_mask(data, **kwargs)
+        elif method == 'clahe':
+            import warnings
+            warnings.warn(
+                "CLAHE is a low-quality implementation. See QUALITY.md for issues.",
+                UserWarning,
+                stacklevel=2
+            )
+            return enhancer.apply_clahe(data, **kwargs)
+        elif method == 'enhance_stars':
+            return enhancer.enhance_stars(data, **kwargs)
+        elif method == 'local_contrast':
+            return enhancer.local_contrast_enhancement(data, **kwargs)
+        else:
+            raise ValueError(f"Unknown enhancement method: {method}")
+
+    def _load_fits_files(
+        self,
+        fits_files: List[Union[str, Path]],
+        auto_calibrate: bool = True
+    ) -> Dict:
+        """Load FITS files and optionally apply calibration (Phase 1).
+
+        Args:
+            fits_files: List of FITS file paths
+            auto_calibrate: Apply calibration if CalibrationManager available
 
         Returns:
             Dictionary mapping filename to loaded data with metadata
@@ -155,11 +480,32 @@ class ProcessingPipeline:
             fits_path = Path(fits_file)
             logger.debug(f"Loading {fits_path.name}")
 
-            # Load FITS (simplified - using astropy directly)
+            # Load FITS
             from astropy.io import fits
             with fits.open(fits_path) as hdul:
                 data = hdul[0].data
                 header = hdul[0].header
+
+            # Apply calibration if available
+            if auto_calibrate and self.calib_manager:
+                try:
+                    # Convert to CCDData for calibration
+                    from ccdproc import CCDData
+                    import astropy.units as u
+
+                    ccd = CCDData(data, unit='adu', header=header)
+
+                    # Apply calibration
+                    filter_name = header.get('FILTER', None)
+                    calibrated_ccd = self.calib_manager.calibrate(ccd, filter_name=filter_name)
+
+                    # Extract calibrated data
+                    data = calibrated_ccd.data
+                    header = calibrated_ccd.header
+                    logger.debug(f"  Applied calibration to {fits_path.name}")
+
+                except Exception as e:
+                    logger.warning(f"Could not calibrate {fits_path.name}: {e}")
 
             # Extract basic metadata
             from astro_vision_composer.utilities.metadata import FITSMetadata
@@ -176,7 +522,7 @@ class ProcessingPipeline:
 
             logger.debug(f"  Loaded {basename}: shape={data.shape}, wavelength={metadata.wavelength}nm")
 
-        self.history.record('load_fits', {'count': len(loaded)}, 'Phase1')
+        self.history.record('load_fits', {'count': len(loaded), 'calibrated': auto_calibrate and self.calib_manager is not None}, 'Phase1')
         return loaded
 
     def _normalize_and_stretch(
@@ -185,7 +531,10 @@ class ProcessingPipeline:
         interval: str = 'auto',
         stretch: str = 'auto'
     ) -> Dict:
-        """Normalize and stretch data (Phase 2).
+        """Normalize and stretch data using astropy ImageNormalize (Phase 2).
+
+        This method now uses astropy's ImageNormalize to combine normalization
+        and stretching in a single operation, following best practices.
 
         Args:
             phase1_data: Output from Phase 1
@@ -202,73 +551,55 @@ class ProcessingPipeline:
             interval_obj = self._parse_interval(interval)
 
         if stretch == 'auto':
-            stretch_method = self._get_default_stretch()
+            stretch_obj = self._get_default_stretch_object()
         else:
-            stretch_method = stretch
+            stretch_obj = self._parse_stretch(stretch)
 
         processed = {}
 
         for name, item in phase1_data.items():
             data = item['data']
 
-            # Normalize
+            # Handle per-channel mode (narrowband)
             if isinstance(interval_obj, str) and interval_obj == 'per_channel':
                 # Narrowband mode - different per channel (not implemented yet)
-                logger.warning("Per-channel intervals not yet implemented, using zscale")
-                normalized = self.normalizer.normalize(data, method='zscale')
+                logger.warning("Per-channel intervals not yet implemented, using ZScale")
+                interval_obj = ZScaleInterval()
+
+            # Create ImageNormalize object combining interval and stretch
+            # This is the astropy best practice way
+            if stretch_obj is None:
+                # No stretching (for SDSS workflow - will use Lupton later)
+                # Use LinearStretch (identity) with the interval
+                norm = ImageNormalize(data, interval=interval_obj, stretch=LinearStretch())
+                processed_data = norm(data)
+                logger.debug(f"  {name}: normalized with {type(interval_obj).__name__}, no stretch")
+            elif isinstance(stretch_obj, str) and stretch_obj == 'histeq':
+                # Special case: HistEqStretch requires data to compute histogram
+                histeq_stretch = HistEqStretch(data)
+                norm = ImageNormalize(data, interval=interval_obj, stretch=histeq_stretch)
+                processed_data = norm(data)
+                logger.debug(f"  {name}: ImageNormalize with {type(interval_obj).__name__} + HistEqStretch")
+                stretch_obj = histeq_stretch  # Store the actual object for later
             else:
-                # Use interval object or method name
-                if hasattr(interval_obj, 'get_limits'):
-                    # It's an astropy interval object
-                    vmin, vmax = interval_obj.get_limits(data[np.isfinite(data)])
-                    normalized = np.clip((data - vmin) / (vmax - vmin), 0, 1)
-                else:
-                    # It's a method name
-                    normalized = self.normalizer.normalize(data, method=interval_obj)
+                # Combined normalization + stretch in single ImageNormalize
+                norm = ImageNormalize(data, interval=interval_obj, stretch=stretch_obj)
+                processed_data = norm(data)
+                logger.debug(f"  {name}: ImageNormalize with {type(interval_obj).__name__} + {type(stretch_obj).__name__}")
 
-            # Stretch
-            if stretch_method is None or stretch_method == 'none':
-                # No stretching (for SDSS workflow)
-                stretched = normalized
-                logger.debug(f"  {name}: normalized only (no stretch)")
-            elif isinstance(stretch_method, str) and stretch_method == 'per_channel':
-                # Per-channel stretch (narrowband)
-                logger.warning("Per-channel stretch not yet implemented, using asinh")
-                stretched = self.stretcher.stretch(normalized, method='asinh', a=0.1)
-            else:
-                # Apply stretch with method-specific parameters
-                if stretch_method in ('asinh', 'sinh'):
-                    # Asinh/Sinh accept 'a' parameter
-                    stretched = self.stretcher.stretch(normalized, method=stretch_method, a=0.1)
-                elif stretch_method == 'power':
-                    # Power accepts 'power' parameter
-                    stretched = self.stretcher.stretch(normalized, method=stretch_method, power=2.0)
-                elif stretch_method == 'histeq':
-                    # HistEq doesn't need extra parameters (takes data internally)
-                    stretched = self.stretcher.stretch(normalized, method=stretch_method)
-                elif stretch_method == 'contrast_bias':
-                    # ContrastBias accepts 'contrast' and 'bias' parameters
-                    stretched = self.stretcher.stretch(normalized, method=stretch_method, contrast=1.5, bias=0.5)
-                else:
-                    # Other methods (linear, sqrt, squared, log) don't need parameters
-                    stretched = self.stretcher.stretch(normalized, method=stretch_method)
-                logger.debug(f"  {name}: normalized + {stretch_method} stretch")
-
-            # Get objects for serialization
-            interval_obj_save = self.normalizer.get_interval_object()
-            stretch_obj_save = self.stretcher.get_stretch_object()
-
+            # Store processed data and normalization objects
             processed[name] = {
-                'normalized': normalized,
-                'stretched': stretched,
+                'normalized': processed_data,  # Keep naming for compatibility
+                'stretched': processed_data,    # This is the final processed data
                 'metadata': item['metadata'],
-                'interval_object': interval_obj_save,
-                'stretch_object': stretch_obj_save
+                'norm_object': norm,           # Store the ImageNormalize object
+                'interval_object': interval_obj,
+                'stretch_object': stretch_obj
             }
 
         self.history.record('normalize_stretch', {
-            'interval': str(interval),
-            'stretch': str(stretch_method)
+            'interval': str(type(interval_obj).__name__),
+            'stretch': str(type(stretch_obj).__name__) if stretch_obj else 'None'
         }, 'Phase2')
 
         return processed
@@ -277,14 +608,19 @@ class ProcessingPipeline:
         self,
         phase2_data: Dict,
         compositor: str = 'auto',
-        stretch_object = 'auto'
+        lupton_workflow: str = 'auto'
     ) -> np.ndarray:
-        """Compose RGB image (Phase 3).
+        """Compose RGB image (Phase 3) with simplified Lupton workflows.
+
+        Implements 3 canonical Lupton workflows explicitly:
+        - 'pre_stretched': Data was stretched in Phase 2, use LinearStretch
+        - 'sdss_auto': Let Lupton auto-calculate stretch from data
+        - 'manual': Provide explicit stretch parameters
 
         Args:
             phase2_data: Output from Phase 2
             compositor: Compositor method ('auto', 'lupton', 'simple')
-            stretch_object: Stretch object for Lupton ('auto', 'linear', object)
+            lupton_workflow: Lupton workflow type ('auto', 'pre_stretched', 'sdss_auto', 'manual')
 
         Returns:
             RGB array (float, [0, 1])
@@ -312,24 +648,40 @@ class ProcessingPipeline:
         if compositor == 'auto':
             compositor = self._get_default_compositor()
 
-        # Determine stretch object for Lupton
-        if stretch_object == 'auto':
-            stretch_object = self._detect_stretch_object(phase2_data)
-
         # Create RGB composite
         if compositor == 'lupton':
-            if stretch_object is None:
-                # Use Lupton with auto-calculated stretch (SDSS workflow)
+            # Determine Lupton workflow
+            if lupton_workflow == 'auto':
+                # Auto-detect based on mode and Phase 2 processing
+                if self.mode == 'sdss':
+                    lupton_workflow = 'sdss_auto'
+                elif phase2_data[mapping.red]['stretch_object'] is not None:
+                    lupton_workflow = 'pre_stretched'
+                else:
+                    lupton_workflow = 'sdss_auto'
+
+            # Implement the 3 canonical Lupton workflows
+            if lupton_workflow == 'pre_stretched':
+                # Workflow A: Pre-stretched data, use identity transform
+                stretch_obj = LinearStretch()
+                logger.info("  Lupton Workflow A: Pre-stretched data with LinearStretch (identity)")
+
+            elif lupton_workflow == 'sdss_auto':
+                # Workflow B: SDSS auto-calculated from data
                 from astropy.visualization import LuptonAsinhZscaleStretch
                 stretch_obj = LuptonAsinhZscaleStretch(r_data, Q=8)
-                logger.info("  Using Lupton with auto-calculated stretch (SDSS method)")
-            elif isinstance(stretch_object, str) and stretch_object == 'linear':
-                stretch_obj = LinearStretch()
-                logger.info("  Using Lupton with LinearStretch (pre-stretched data)")
-            else:
-                stretch_obj = stretch_object
-                logger.info(f"  Using Lupton with {type(stretch_obj).__name__}")
+                logger.info("  Lupton Workflow B: SDSS auto-calculated stretch")
 
+            elif lupton_workflow == 'manual':
+                # Workflow C: Manual Lupton stretch parameters
+                from astropy.visualization import LuptonAsinhStretch
+                stretch_obj = LuptonAsinhStretch(stretch=5, Q=8)
+                logger.info("  Lupton Workflow C: Manual stretch parameters")
+
+            else:
+                raise ValueError(f"Unknown Lupton workflow: {lupton_workflow}")
+
+            # Apply Lupton RGB composition
             rgb = self.compositor.create_lupton_rgb(
                 r=r_data, g=g_data, b=b_data,
                 stretch_object=stretch_obj,
@@ -347,6 +699,7 @@ class ProcessingPipeline:
 
         self.history.record('compose_rgb', {
             'compositor': compositor,
+            'lupton_workflow': lupton_workflow if compositor == 'lupton' else 'N/A',
             'mapping': {'red': mapping.red, 'green': mapping.green, 'blue': mapping.blue}
         }, 'Phase3')
 
@@ -363,16 +716,53 @@ class ProcessingPipeline:
         }
         return defaults.get(self.mode, ZScaleInterval())
 
-    def _get_default_stretch(self):
-        """Get default stretch for workflow mode."""
+    def _get_default_stretch_object(self):
+        """Get default stretch object for workflow mode.
+
+        Returns astropy stretch objects instead of string names,
+        following best practices for ImageNormalize.
+
+        Note: HistEqStretch requires data, so it's returned as string 'histeq'
+        and created later in _normalize_and_stretch() when data is available.
+        """
         defaults = {
-            'scientific': 'asinh',
+            'scientific': AsinhStretch(a=0.1),
             'sdss': None,  # No stretch, Lupton handles it
-            'aesthetic': 'histeq',  # Histogram equalization for maximum visual impact
-            'narrowband': 'per_channel',
-            'custom': 'asinh'
+            'aesthetic': 'histeq',  # Special case - requires data to create
+            'narrowband': AsinhStretch(a=0.1),  # Per-channel not implemented yet
+            'custom': AsinhStretch(a=0.1)
         }
-        return defaults.get(self.mode, 'asinh')
+        return defaults.get(self.mode, AsinhStretch(a=0.1))
+
+    def _parse_stretch(self, stretch_spec):
+        """Parse stretch specification to astropy stretch object.
+
+        Args:
+            stretch_spec: String name or stretch object
+
+        Returns:
+            Astropy stretch object, string 'histeq', or None
+
+        Note: 'histeq' is returned as string because HistEqStretch
+        requires data and will be created later in _normalize_and_stretch().
+        """
+        if stretch_spec is None or stretch_spec == 'none':
+            return None
+        elif isinstance(stretch_spec, str):
+            # Convert string to stretch object
+            stretch_map = {
+                'linear': LinearStretch(),
+                'sqrt': SqrtStretch(),
+                'squared': SquaredStretch(),
+                'asinh': AsinhStretch(a=0.1),
+                'sinh': AsinhStretch(a=0.1),  # Similar to asinh
+                'log': LogStretch(a=1000),
+                'histeq': 'histeq'  # Special case - return string, not object
+            }
+            return stretch_map.get(stretch_spec, AsinhStretch(a=0.1))
+        else:
+            # Assume it's already a stretch object
+            return stretch_spec
 
     def _get_default_compositor(self) -> str:
         """Get default compositor for workflow mode."""
@@ -385,23 +775,6 @@ class ProcessingPipeline:
         }
         return defaults.get(self.mode, 'lupton')
 
-    def _detect_stretch_object(self, phase2_data: Dict):
-        """Detect appropriate stretch object based on Phase 2 processing.
-
-        If Phase 2 applied stretching, return LinearStretch (identity).
-        If Phase 2 only normalized, return None (let Lupton auto-calculate).
-        """
-        # Check if any stretch was applied
-        sample_item = next(iter(phase2_data.values()))
-
-        if sample_item['stretch_object'] is not None:
-            # Phase 2 applied stretch - use LinearStretch
-            logger.debug("  Detected pre-stretched data → LinearStretch")
-            return 'linear'
-        else:
-            # Phase 2 only normalized - let Lupton auto-calculate
-            logger.debug("  Detected normalized-only data → Auto-calculate stretch")
-            return None
 
     def _parse_interval(self, interval_spec):
         """Parse interval specification string to interval object."""

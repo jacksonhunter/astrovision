@@ -14,6 +14,7 @@ from .mission_adapters import (
 )
 from .quality_assessor import QualityAssessor, QualityReport
 from .calibrator import Calibrator
+from .calibration_manager import CalibrationManager, CalibrationFrames
 
 __all__ = [
     'FITSLoader',
@@ -25,5 +26,7 @@ __all__ = [
     'get_mission_adapter',
     'QualityAssessor',
     'QualityReport',
-    'Calibrator'
+    'Calibrator',
+    'CalibrationManager',
+    'CalibrationFrames'
 ]
