@@ -11,13 +11,11 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# Try to import PIL for thumbnails
-try:
-    from PIL import Image
-    PIL_AVAILABLE = True
-except ImportError:
-    PIL_AVAILABLE = False
-    logger.warning("PIL/Pillow not available. Install with: pip install Pillow")
+# Import PIL for thumbnails
+from PIL import Image
+
+# Import scipy for resizing
+from scipy import ndimage
 
 
 class PreviewGenerator:
@@ -76,26 +74,16 @@ class PreviewGenerator:
 
         logger.info(f"Creating thumbnail: {width}x{height} → {new_width}x{new_height}")
 
-        # Resize using scipy or PIL
-        try:
-            from scipy import ndimage
-            if method == 'bilinear':
-                thumbnail = ndimage.zoom(data, (scale, scale) if len(data.shape) == 2 else (scale, scale, 1), order=1)
-            elif method == 'nearest':
-                thumbnail = ndimage.zoom(data, (scale, scale) if len(data.shape) == 2 else (scale, scale, 1), order=0)
-            elif method == 'area':
-                # Area method not directly available in scipy, use bilinear
-                thumbnail = ndimage.zoom(data, (scale, scale) if len(data.shape) == 2 else (scale, scale, 1), order=1)
-            else:
-                raise ValueError(f"Unknown method: {method}")
-
-        except ImportError:
-            logger.warning("scipy not available, using simple slicing")
-            stride = int(1 / scale)
-            if len(data.shape) == 2:
-                thumbnail = data[::stride, ::stride]
-            else:
-                thumbnail = data[::stride, ::stride, :]
+        # Resize using scipy
+        if method == 'bilinear':
+            thumbnail = ndimage.zoom(data, (scale, scale) if len(data.shape) == 2 else (scale, scale, 1), order=1)
+        elif method == 'nearest':
+            thumbnail = ndimage.zoom(data, (scale, scale) if len(data.shape) == 2 else (scale, scale, 1), order=0)
+        elif method == 'area':
+            # Area method not directly available in scipy, use bilinear
+            thumbnail = ndimage.zoom(data, (scale, scale) if len(data.shape) == 2 else (scale, scale, 1), order=1)
+        else:
+            raise ValueError(f"Unknown method: {method}")
 
         return thumbnail
 
@@ -164,9 +152,6 @@ class PreviewGenerator:
             ...     max_size=256
             ... )
         """
-        if not PIL_AVAILABLE:
-            raise ImportError("PIL/Pillow required. Install with: pip install Pillow")
-
         filepath = Path(filepath)
         filepath.parent.mkdir(parents=True, exist_ok=True)
 

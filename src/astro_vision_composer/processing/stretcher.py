@@ -4,30 +4,23 @@ This module provides the Stretcher class for applying non-linear transformations
 to normalized image data to enhance faint features and compress dynamic range.
 """
 
-from typing import Literal
+from __future__ import annotations
+from typing import Literal, TYPE_CHECKING, Any
 import numpy as np
 import logging
 
 logger = logging.getLogger(__name__)
 
 # Import astropy visualization stretches
-try:
-    from astropy.visualization import (
-        LinearStretch, SqrtStretch, SquaredStretch, LogStretch,
-        AsinhStretch, SinhStretch, PowerStretch, PowerDistStretch,
-        InvertedStretch, HistEqStretch, ContrastBiasStretch
-    )
-    ASTROPY_VIZ_AVAILABLE = True
-except ImportError:
-    ASTROPY_VIZ_AVAILABLE = False
-    logger.warning(
-        "astropy.visualization not available. "
-        "Install/update astropy: pip install astropy"
-    )
+from astropy.visualization import (
+    LinearStretch, SqrtStretch, SquaredStretch, LogStretch,
+    AsinhStretch, SinhStretch, PowerStretch, HistEqStretch,
+    ContrastBiasStretch
+)
 
 
 StretchMethod = Literal[
-    'linear', 'sqrt', 'squared', 'log', 'asinh', 'sinh', 'power', 'histeq'
+    'linear', 'sqrt', 'squared', 'log', 'asinh', 'sinh', 'power', 'histeq', 'contrast_bias'
 ]
 
 
@@ -61,16 +54,8 @@ class Stretcher:
     """
 
     def __init__(self):
-        """Initialize the Stretcher.
-
-        Raises:
-            ImportError: If astropy.visualization is not available
-        """
-        if not ASTROPY_VIZ_AVAILABLE:
-            raise ImportError(
-                "astropy.visualization is required. "
-                "Install/update astropy: pip install astropy"
-            )
+        """Initialize the Stretcher."""
+        self._last_stretch_obj = None
 
     def stretch(
         self,
@@ -79,6 +64,9 @@ class Stretcher:
         **kwargs
     ) -> np.ndarray:
         """Apply non-linear stretch to normalized data.
+
+        Raises:
+            ImportError: If astropy.visualization is not available
 
         Args:
             data: Normalized input data (should be in [0, 1] range)
@@ -101,39 +89,70 @@ class Stretcher:
         if data is None or data.size == 0:
             raise ValueError("data is empty or None")
 
-        # Get the stretch function
-        if method == 'linear':
-            stretch_fn = self._get_linear_stretch(**kwargs)
-        elif method == 'sqrt':
-            stretch_fn = self._get_sqrt_stretch(**kwargs)
-        elif method == 'squared':
-            stretch_fn = self._get_squared_stretch(**kwargs)
-        elif method == 'log':
-            stretch_fn = self._get_log_stretch(**kwargs)
-        elif method == 'asinh':
-            stretch_fn = self._get_asinh_stretch(**kwargs)
-        elif method == 'sinh':
-            stretch_fn = self._get_sinh_stretch(**kwargs)
-        elif method == 'power':
-            stretch_fn = self._get_power_stretch(**kwargs)
-        elif method == 'histeq':
-            stretch_fn = self._get_histeq_stretch(**kwargs)
-        else:
-            raise ValueError(
-                f"Unknown stretch method '{method}'. "
-                f"Must be one of: linear, sqrt, squared, log, asinh, sinh, power, histeq"
-            )
-
         logger.debug(f"Applying {method} stretch")
 
-        # Apply stretch
-        stretched = stretch_fn(data)
+        # HistEqStretch is special - it needs data at initialization
+        # and we need to handle 2D data by flattening for both init and call
+        if method == 'histeq':
+            original_shape = data.shape
+            data_flat = data.flatten()
+            stretch_fn = self._get_histeq_stretch(data_flat, **kwargs)
+            stretched_flat = stretch_fn(data_flat)
+            stretched = stretched_flat.reshape(original_shape)
+        else:
+            # Get the stretch function for other methods
+            if method == 'linear':
+                stretch_fn = self._get_linear_stretch(**kwargs)
+            elif method == 'sqrt':
+                stretch_fn = self._get_sqrt_stretch(**kwargs)
+            elif method == 'squared':
+                stretch_fn = self._get_squared_stretch(**kwargs)
+            elif method == 'log':
+                stretch_fn = self._get_log_stretch(**kwargs)
+            elif method == 'asinh':
+                stretch_fn = self._get_asinh_stretch(**kwargs)
+            elif method == 'sinh':
+                stretch_fn = self._get_sinh_stretch(**kwargs)
+            elif method == 'power':
+                stretch_fn = self._get_power_stretch(**kwargs)
+            elif method == 'contrast_bias':
+                stretch_fn = self._get_contrast_bias_stretch(**kwargs)
+            else:
+                raise ValueError(
+                    f"Unknown stretch method '{method}'. "
+                    f"Must be one of: linear, sqrt, squared, log, asinh, sinh, power, histeq, contrast_bias"
+                )
+
+            # Apply stretch
+            stretched = stretch_fn(data)
+
+        # Store stretch object for Phase 3 use (can be pickled for workflow continuity)
+        self._last_stretch_obj = stretch_fn
 
         # Ensure output is finite and in [0, 1]
         stretched = np.nan_to_num(stretched, nan=0.0, posinf=1.0, neginf=0.0)
         stretched = np.clip(stretched, 0, 1)
 
         return stretched
+
+    def get_stretch_object(self):
+        """Get the last used stretch object.
+
+        Returns the astropy stretch object from the most recent stretch() call.
+        This object can be pickled and passed to Phase 3 for workflow continuity.
+
+        Returns:
+            BaseStretch: The last used astropy stretch object, or None if no stretch applied yet
+
+        Example:
+            >>> stretcher = Stretcher()
+            >>> stretched = stretcher.stretch(data, method='asinh', a=0.1)
+            >>> stretch_obj = stretcher.get_stretch_object()
+            >>> # Can pickle for Phase 3
+            >>> import pickle
+            >>> pickled = pickle.dumps(stretch_obj)
+        """
+        return self._last_stretch_obj
 
     def _get_linear_stretch(self) -> LinearStretch:
         """Get LinearStretch (identity function)."""
@@ -220,19 +239,57 @@ class Stretcher:
             raise ValueError(f"Power must be positive, got {power}")
         return PowerStretch(a=power)
 
-    def _get_histeq_stretch(self, nbins: int = 256) -> HistEqStretch:
+    def _get_histeq_stretch(self, data: np.ndarray) -> HistEqStretch:
         """Get HistEqStretch (histogram equalization).
 
         Maximizes local contrast by flattening the histogram.
         Can produce dramatic results but may introduce artifacts.
 
+        Note: HistEqStretch requires data at initialization to compute histogram.
+        Data should already be flattened to 1D.
+
         Args:
-            nbins: Number of histogram bins (default: 256)
+            data: 1D array of image data for computing histogram
 
         Returns:
-            HistEqStretch object
+            HistEqStretch object initialized with data
         """
-        return HistEqStretch(data=None)  # Will use passed data
+        # HistEqStretch needs finite values only for histogram calculation
+        finite_data = data[np.isfinite(data)]
+
+        if finite_data.size == 0:
+            logger.warning("No finite data for HistEq, using LinearStretch instead")
+            return LinearStretch()
+
+        # HistEqStretch expects data parameter only (values is optional and for output mapping)
+        # Pass the finite 1D data
+        return HistEqStretch(data=finite_data)
+
+    def _get_contrast_bias_stretch(self, contrast: float = 1.0, bias: float = 0.5) -> ContrastBiasStretch:
+        """Get ContrastBiasStretch (contrast and bias adjustment).
+
+        Adjusts contrast and bias of the image. The stretch is given by:
+        y = (x - bias) * contrast + 0.5
+
+        Args:
+            contrast: Contrast parameter (default: 1.0)
+                     - contrast > 1: increase contrast
+                     - contrast < 1: decrease contrast
+                     - contrast = 1: no change
+            bias: Bias parameter (default: 0.5, range [0, 1])
+                  - bias > 0.5: shift towards darker values
+                  - bias < 0.5: shift towards brighter values
+                  - bias = 0.5: no shift
+
+        Returns:
+            ContrastBiasStretch object
+        """
+        if contrast <= 0:
+            raise ValueError(f"Contrast must be positive, got {contrast}")
+        if not (0 <= bias <= 1):
+            raise ValueError(f"Bias must be in [0, 1] range, got {bias}")
+
+        return ContrastBiasStretch(contrast=contrast, bias=bias)
 
     def apply_combined(
         self,

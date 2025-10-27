@@ -1,44 +1,54 @@
-# Test Scripts
+# Test Suite for astro_vision_composer
 
-Organized test scripts for the AstroVision project.
+Comprehensive pytest test suite for the VisionProject astronomical image processing pipeline.
 
-## Directory Structure
+## Overview
 
-### `validation/`
-**Tests that validate AI capabilities work**
+- **Total Test Files:** 20+ test files
+- **Test Coverage Target:** 80%+
+- **Test Categories:** Unit, Integration, Regression
+- **Real Data Testing:** Uses NOIRLab FITS datasets
 
-- `test_ai_vision.py` - Proves AI can see different images (black/white/red test)
-- `test_json_proper_fewshot.py` - Proves JSON format training works (colored squares)
-- `test_assistant_messages.py` - Tests server capabilities (assistant message support)
+## Installation
 
-These tests confirm basic functionality and serve as regression tests.
+Install test dependencies:
 
-### `astronomical/`
-**Current working tests with real astronomical data**
-
-- `test_fewshot_astronomy.py` - **PRIMARY TEST** - Few-shot training with NOIRLab images
-- `test_5band_v2.py` - Multi-band PanSTARRS analysis (work in progress)
-
-These are the active development tests we're improving.
-
-### `deprecated/`
-**Old tests that revealed problems**
-
-Tests that helped us discover issues (template copying, example value copying, etc.). Kept for historical reference and to document what doesn't work.
+```bash
+pip install -e ".[test]"
+```
 
 ## Running Tests
 
-```bash
-# Validation tests (should always pass)
-python tests/validation/test_ai_vision.py
-python tests/validation/test_json_proper_fewshot.py
+### Basic Usage
 
-# Current astronomical tests
-python tests/astronomical/test_fewshot_astronomy.py "path/to/fits/file"
+```bash
+# Run all tests
+pytest
+
+# Run with coverage
+pytest --cov=src/astro_vision_composer --cov-report=html
+
+# Run specific category
+pytest tests/unit/          # Unit tests only
+pytest -m integration       # Integration tests
+pytest -m regression        # Regression tests
+
+# Skip slow tests
+pytest -m "not slow"
 ```
 
-## Requirements
+## Quality Assessment Scoring System
 
-- AI server running on localhost:5000 (via SSH tunnel)
-- FITS files for astronomical tests
-- See main README.md for setup instructions
+Tests can record quality scores (SNR, saturation, etc.) without affecting pass/fail.
+
+### Usage:
+
+```python
+def test_something(record_quality_score):
+    # ... test code ...
+    record_quality_score('snr', 42.5, {'band': 'g'})
+```
+
+After tests, see aggregate quality statistics in the summary!
+
+See full documentation in PYTEST_STRATEGY.md

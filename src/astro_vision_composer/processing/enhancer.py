@@ -11,13 +11,8 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# Try to import skimage for CLAHE
-try:
-    from skimage import exposure
-    SKIMAGE_AVAILABLE = True
-except ImportError:
-    SKIMAGE_AVAILABLE = False
-    logger.warning("scikit-image not available. Install with: pip install scikit-image")
+# Import skimage for CLAHE
+from skimage import exposure
 
 
 class Enhancer:
@@ -70,9 +65,6 @@ class Enhancer:
             ...     clip_limit=0.01
             ... )
         """
-        if not SKIMAGE_AVAILABLE:
-            raise ImportError("scikit-image required. Install with: pip install scikit-image")
-
         # Auto-calculate kernel size if not provided
         if kernel_size is None:
             # Use ~1/8 of image size

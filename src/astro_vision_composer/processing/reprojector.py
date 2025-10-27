@@ -12,14 +12,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 # Import reproject functions
-try:
-    from reproject import reproject_interp, reproject_exact
-    REPROJECT_AVAILABLE = True
-except ImportError:
-    REPROJECT_AVAILABLE = False
-    logger.warning(
-        "reproject library not available. Install with: pip install reproject"
-    )
+from reproject import reproject_interp, reproject_exact
 
 
 ReprojectionMethod = Literal['interp', 'exact']
@@ -71,11 +64,6 @@ class Reprojector:
         Raises:
             ImportError: If reproject library is not installed
         """
-        if not REPROJECT_AVAILABLE:
-            raise ImportError(
-                "reproject library is required. Install with: pip install reproject"
-            )
-
         if method not in ['interp', 'exact']:
             raise ValueError(f"method must be 'interp' or 'exact', got '{method}'")
 

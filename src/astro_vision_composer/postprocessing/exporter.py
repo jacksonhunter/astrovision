@@ -12,20 +12,10 @@ import logging
 logger = logging.getLogger(__name__)
 
 # Import PIL for image saving
-try:
-    from PIL import Image
-    PIL_AVAILABLE = True
-except ImportError:
-    PIL_AVAILABLE = False
-    logger.warning("PIL/Pillow not available. Install with: pip install Pillow")
+from PIL import Image, PngImagePlugin
 
 # Import matplotlib for saving
-try:
-    import matplotlib.pyplot as plt
-    MATPLOTLIB_AVAILABLE = True
-except ImportError:
-    MATPLOTLIB_AVAILABLE = False
-    logger.warning("matplotlib not available. Install with: pip install matplotlib")
+import matplotlib.pyplot as plt
 
 
 class ImageExporter:
@@ -50,6 +40,39 @@ class ImageExporter:
         """Initialize the ImageExporter."""
         pass
 
+    def _normalize_to_float(self, data: np.ndarray) -> np.ndarray:
+        """Normalize image data to [0, 1] float range.
+
+        Handles both float [0, 1] and uint8 [0, 255] input data.
+
+        Args:
+            data: Input image array
+
+        Returns:
+            Normalized array in [0, 1] float range
+        """
+        # If already float in [0, 1], just clip
+        if data.dtype in [np.float32, np.float64, np.float16]:
+            if data.max() <= 1.0:
+                return np.clip(data, 0, 1)
+            else:
+                # Float but values > 1, normalize by max
+                logger.warning(f"Float data has max={data.max():.2f} > 1, normalizing to [0,1]")
+                return np.clip(data / data.max(), 0, 1)
+
+        # If uint8 [0, 255], convert to float [0, 1]
+        elif data.dtype == np.uint8:
+            return data.astype(np.float32) / 255.0
+
+        # If uint16, convert to float [0, 1]
+        elif data.dtype == np.uint16:
+            return data.astype(np.float32) / 65535.0
+
+        # Other integer types, normalize by max value
+        else:
+            logger.warning(f"Unexpected dtype {data.dtype}, normalizing by max value")
+            return np.clip(data.astype(np.float32) / data.max(), 0, 1)
+
     def save_png(
         self,
         data: np.ndarray,
@@ -62,8 +85,8 @@ class ImageExporter:
 
         Args:
             data: Image data array (either grayscale or RGB)
-                 - For RGB: shape (height, width, 3), values in [0, 1]
-                 - For grayscale: shape (height, width), values in [0, 1]
+                 - For RGB: shape (height, width, 3), values in [0, 1] or [0, 255]
+                 - For grayscale: shape (height, width), values in [0, 1] or [0, 255]
             filepath: Output file path
             metadata: Optional metadata dictionary
             bit_depth: 8 or 16 bits per channel
@@ -76,21 +99,18 @@ class ImageExporter:
             >>> rgb = compositor.create_lupton_rgb(r, g, b)
             >>> exporter.save_png(rgb, 'output.png', bit_depth=16)
         """
-        if not PIL_AVAILABLE:
-            raise ImportError("PIL/Pillow required. Install with: pip install Pillow")
-
         filepath = Path(filepath)
         filepath.parent.mkdir(parents=True, exist_ok=True)
 
-        # Ensure data is in [0, 1] range
-        data_clipped = np.clip(data, 0, 1)
+        # Normalize data to [0, 1] float range
+        data_normalized = self._normalize_to_float(data)
 
         # Convert to appropriate bit depth
         if bit_depth == 8:
-            data_scaled = (data_clipped * 255).astype(np.uint8)
+            data_scaled = (data_normalized * 255).astype(np.uint8)
             mode = 'RGB' if len(data.shape) == 3 else 'L'
         elif bit_depth == 16:
-            data_scaled = (data_clipped * 65535).astype(np.uint16)
+            data_scaled = (data_normalized * 65535).astype(np.uint16)
             mode = 'RGB' if len(data.shape) == 3 else 'I;16'
         else:
             raise ValueError(f"bit_depth must be 8 or 16, got {bit_depth}")
@@ -105,8 +125,7 @@ class ImageExporter:
 
         # Add metadata as PNG text chunks
         pnginfo = None
-        if metadata:
-            from PIL import PngImagePlugin
+        if metadata and PngImagePlugin:
             pnginfo = PngImagePlugin.PngInfo()
             for key, value in metadata.items():
                 pnginfo.add_text(str(key), str(value))
@@ -128,7 +147,7 @@ class ImageExporter:
         """Save image as TIFF with metadata.
 
         Args:
-            data: Image data array (grayscale or RGB)
+            data: Image data array (grayscale or RGB), values in [0, 1] or [0, 255]
             filepath: Output file path
             metadata: Optional metadata dictionary
             bit_depth: 8 or 16 bits per channel
@@ -137,28 +156,46 @@ class ImageExporter:
         Returns:
             Path to saved file
         """
-        if not PIL_AVAILABLE:
-            raise ImportError("PIL/Pillow required. Install with: pip install Pillow")
-
         filepath = Path(filepath)
         filepath.parent.mkdir(parents=True, exist_ok=True)
 
-        # Ensure data is in [0, 1] range
-        data_clipped = np.clip(data, 0, 1)
+        # Normalize data to [0, 1] float range
+        data_normalized = self._normalize_to_float(data)
 
         # Convert to appropriate bit depth
         if bit_depth == 8:
-            data_scaled = (data_clipped * 255).astype(np.uint8)
+            data_scaled = (data_normalized * 255).astype(np.uint8)
+            mode = 'RGB' if len(data.shape) == 3 else 'L'
         elif bit_depth == 16:
-            data_scaled = (data_clipped * 65535).astype(np.uint16)
+            data_scaled = (data_normalized * 65535).astype(np.uint16)
+            # PIL's RGB mode doesn't support 16-bit, must save per-channel or use I;16
+            if len(data.shape) == 3:
+                # For 16-bit RGB TIFF, use tifffile if available, else fall back to 8-bit
+                try:
+                    import tifffile
+                    # Save directly with tifffile (supports 16-bit RGB properly)
+                    tifffile.imwrite(
+                        filepath,
+                        data_scaled,
+                        compression=compression if compression != 'lzw' else 'deflate',
+                        photometric='rgb'
+                    )
+                    logger.info(f"Saved 16-bit RGB TIFF to {filepath} (tifffile)")
+                    return filepath
+                except ImportError:
+                    logger.warning("tifffile not available, falling back to 8-bit TIFF")
+                    data_scaled = (data_normalized * 255).astype(np.uint8)
+                    mode = 'RGB'
+            else:
+                mode = 'I;16'  # 16-bit grayscale
         else:
             raise ValueError(f"bit_depth must be 8 or 16, got {bit_depth}")
 
-        # Create PIL Image
+        # Create PIL Image (if we didn't use tifffile above)
         if len(data.shape) == 3:
             img = Image.fromarray(data_scaled, mode='RGB')
         else:
-            img = Image.fromarray(data_scaled, mode='L')
+            img = Image.fromarray(data_scaled, mode='L' if bit_depth == 8 else 'I;16')
 
         # Save with compression
         img.save(filepath, format='TIFF', compression=compression)
@@ -178,22 +215,19 @@ class ImageExporter:
         Use PNG or TIFF for lossless storage.
 
         Args:
-            data: Image data array (grayscale or RGB)
+            data: Image data array (grayscale or RGB), values in [0, 1] or [0, 255]
             filepath: Output file path
             quality: JPEG quality (1-100, higher is better)
 
         Returns:
             Path to saved file
         """
-        if not PIL_AVAILABLE:
-            raise ImportError("PIL/Pillow required. Install with: pip install Pillow")
-
         filepath = Path(filepath)
         filepath.parent.mkdir(parents=True, exist_ok=True)
 
-        # Convert to 8-bit
-        data_clipped = np.clip(data, 0, 1)
-        data_scaled = (data_clipped * 255).astype(np.uint8)
+        # Normalize and convert to 8-bit
+        data_normalized = self._normalize_to_float(data)
+        data_scaled = (data_normalized * 255).astype(np.uint8)
 
         # Create PIL Image
         if len(data.shape) == 3:
@@ -226,9 +260,6 @@ class ImageExporter:
         Returns:
             Path to saved file
         """
-        if not MATPLOTLIB_AVAILABLE:
-            raise ImportError("matplotlib required. Install with: pip install matplotlib")
-
         filepath = Path(filepath)
         filepath.parent.mkdir(parents=True, exist_ok=True)
 

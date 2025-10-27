@@ -26,7 +26,7 @@ Provide a high-level, user-friendly API for common astronomical image processing
 ### High-Level Interface
 
 ```python
-from astro_vision_composer.utilities import ProcessingPipeline
+from astro_vision_composer import ProcessingPipeline
 
 pipeline = ProcessingPipeline()
 
@@ -291,7 +291,7 @@ class ValidationError(PipelineError):
 ### Example 1: Simplest Possible
 
 ```python
-from astro_vision_composer.utilities import ProcessingPipeline
+from astro_vision_composer import ProcessingPipeline
 
 ProcessingPipeline().create_rgb_composite(
     files=['g.fits', 'r.fits', 'i.fits'],

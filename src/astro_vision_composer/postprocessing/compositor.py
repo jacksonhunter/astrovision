@@ -4,6 +4,7 @@ This module provides the Compositor class for creating RGB composite images
 from multi-wavelength astronomical data.
 """
 
+from __future__ import annotations
 from typing import Optional, Literal
 import numpy as np
 import logging
@@ -11,15 +12,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 # Import astropy visualization for Lupton RGB
-try:
-    from astropy.visualization import make_lupton_rgb
-    ASTROPY_VIZ_AVAILABLE = True
-except ImportError:
-    ASTROPY_VIZ_AVAILABLE = False
-    logger.warning(
-        "astropy.visualization not available. "
-        "Install/update astropy: pip install astropy"
-    )
+from astropy.visualization import make_lupton_rgb
 
 
 CompositeMethod = Literal['lupton', 'simple']
@@ -56,20 +49,18 @@ class Compositor:
         Raises:
             ImportError: If astropy.visualization is not available
         """
-        if not ASTROPY_VIZ_AVAILABLE:
-            raise ImportError(
-                "astropy.visualization is required. "
-                "Install/update astropy: pip install astropy"
-            )
+        pass
 
     def create_lupton_rgb(
         self,
         r: np.ndarray,
         g: np.ndarray,
         b: np.ndarray,
+        stretch_object=None,
         minimum: float = 0.0,
         stretch: float = 0.5,
         Q: float = 8.0,
+        output_dtype: type = np.float64,
         filename: Optional[str] = None
     ) -> np.ndarray:
         """Create RGB composite using Lupton et al. algorithm.
@@ -82,24 +73,48 @@ class Compositor:
             r: Red channel data (longest wavelength)
             g: Green channel data (middle wavelength)
             b: Blue channel data (shortest wavelength)
+            stretch_object: Custom stretch object (overrides stretch/Q if provided)
+                - LinearStretch() for pre-stretched data (no additional tone-mapping)
+                - LuptonAsinhStretch(stretch=5, Q=8) for manual control
+                - LuptonAsinhZscaleStretch(image, Q=8) for auto-calculated stretch
+                - None: use stretch and Q parameters (default)
             minimum: Black point (data values below this become black)
-            stretch: Linear stretch parameter (higher = more aggressive)
-            Q: Asinh softening parameter (higher = more linear)
+            stretch: Linear stretch parameter (ignored if stretch_object provided)
+            Q: Asinh softening parameter (ignored if stretch_object provided)
+            output_dtype: Output data type (default: float64)
+                Accepted types: float, np.float64, np.uint8
             filename: Optional path to save directly
 
         Returns:
-            RGB image array with shape (height, width, 3) and values in [0, 1]
+            RGB image array with shape (height, width, 3)
+            - dtype determined by output_dtype parameter
+            - Values in [0, 1] for float types, [0, 255] for uint8
 
         Notes:
-            - Input data should be pre-normalized/stretched for best results
-            - Default stretch=0.5, Q=8 work well for most cases
-            - Increase Q for brighter images
-            - Decrease stretch for more aggressive scaling
+            - For pre-stretched data: use stretch_object=LinearStretch()
+            - For normalized-only data: use stretch_object=LuptonAsinhZscaleStretch(r)
+            - For manual control: use stretch and Q parameters (default)
 
-        Example:
-            >>> # After normalization and stretching
+        Examples:
+            >>> from astropy.visualization import LinearStretch, LuptonAsinhZscaleStretch
+            >>>
+            >>> # Pre-stretched data (Workflow 1: Scientific Standard)
             >>> rgb = compositor.create_lupton_rgb(
-            ...     r=i_stretched, g=r_stretched, b=g_stretched,
+            ...     r, g, b,
+            ...     stretch_object=LinearStretch(),
+            ...     output_dtype=np.float64
+            ... )
+            >>>
+            >>> # Auto-calculate stretch (Workflow 2: SDSS Method)
+            >>> rgb = compositor.create_lupton_rgb(
+            ...     r, g, b,
+            ...     stretch_object=LuptonAsinhZscaleStretch(r, Q=8),
+            ...     output_dtype=np.float64
+            ... )
+            >>>
+            >>> # Manual control (traditional)
+            >>> rgb = compositor.create_lupton_rgb(
+            ...     r, g, b,
             ...     stretch=0.5, Q=10
             ... )
         """
@@ -109,15 +124,24 @@ class Compositor:
                 f"Got r={r.shape}, g={g.shape}, b={b.shape}"
             )
 
-        logger.info(
-            f"Creating Lupton RGB: stretch={stretch}, Q={Q}, minimum={minimum}"
-        )
+        if stretch_object is not None:
+            logger.info(
+                f"Creating Lupton RGB: stretch_object={stretch_object.__class__.__name__}, "
+                f"output_dtype={output_dtype.__name__}"
+            )
+        else:
+            logger.info(
+                f"Creating Lupton RGB: stretch={stretch}, Q={Q}, minimum={minimum}, "
+                f"output_dtype={output_dtype.__name__}"
+            )
 
         rgb = make_lupton_rgb(
             r, g, b,
+            stretch_object=stretch_object,
             minimum=minimum,
             stretch=stretch,
             Q=Q,
+            output_dtype=output_dtype,
             filename=filename
         )
 

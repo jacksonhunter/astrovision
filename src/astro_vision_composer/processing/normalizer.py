@@ -4,6 +4,7 @@ This module provides the Normalizer class for scaling image data to a standard
 range using various interval selection methods.
 """
 
+from __future__ import annotations
 from typing import Optional, Tuple, Literal
 import numpy as np
 import logging
@@ -11,18 +12,10 @@ import logging
 logger = logging.getLogger(__name__)
 
 # Import astropy visualization tools
-try:
-    from astropy.visualization import (
-        MinMaxInterval, PercentileInterval, AsymmetricPercentileInterval,
-        ZScaleInterval, ManualInterval
-    )
-    ASTROPY_VIZ_AVAILABLE = True
-except ImportError:
-    ASTROPY_VIZ_AVAILABLE = False
-    logger.warning(
-        "astropy.visualization not available. "
-        "Install/update astropy: pip install astropy"
-    )
+from astropy.visualization import (
+    MinMaxInterval, AsymmetricPercentileInterval, PercentileInterval,
+    ZScaleInterval, ManualInterval
+)
 
 
 IntervalMethod = Literal['minmax', 'percentile', 'zscale', 'manual']
@@ -57,11 +50,7 @@ class Normalizer:
         Raises:
             ImportError: If astropy.visualization is not available
         """
-        if not ASTROPY_VIZ_AVAILABLE:
-            raise ImportError(
-                "astropy.visualization is required. "
-                "Install/update astropy: pip install astropy"
-            )
+        self._last_interval_obj = None
 
     def normalize(
         self,
@@ -122,6 +111,9 @@ class Normalizer:
             f"Normalizing with {method}: vmin={vmin:.3e}, vmax={vmax:.3e}"
         )
 
+        # Store interval object for Phase 3 use (can be pickled for workflow continuity)
+        self._last_interval_obj = interval
+
         # Normalize data to [0, 1]
         normalized = np.clip((data - vmin) / (vmax - vmin), 0, 1)
 
@@ -129,6 +121,25 @@ class Normalizer:
         normalized[~np.isfinite(data)] = 0
 
         return normalized
+
+    def get_interval_object(self):
+        """Get the last used interval object.
+
+        Returns the astropy interval object from the most recent normalize() call.
+        This object can be pickled and passed to Phase 3 for workflow continuity.
+
+        Returns:
+            BaseInterval: The last used astropy interval object, or None if no normalization applied yet
+
+        Example:
+            >>> normalizer = Normalizer()
+            >>> normalized = normalizer.normalize(data, method='zscale')
+            >>> interval_obj = normalizer.get_interval_object()
+            >>> # Can pickle for Phase 3
+            >>> import pickle
+            >>> pickled = pickle.dumps(interval_obj)
+        """
+        return self._last_interval_obj
 
     def _get_minmax_interval(self) -> MinMaxInterval:
         """Get MinMaxInterval (simple min/max scaling)."""
@@ -138,26 +149,62 @@ class Normalizer:
         self,
         lower: float = 1.0,
         upper: float = 99.0
-    ) -> PercentileInterval:
-        """Get PercentileInterval.
+    ) -> AsymmetricPercentileInterval:
+        """Get AsymmetricPercentileInterval.
 
         Args:
             lower: Lower percentile (default: 1.0)
             upper: Upper percentile (default: 99.0)
 
         Returns:
-            PercentileInterval object
+            AsymmetricPercentileInterval object
         """
         if lower < 0 or upper > 100 or lower >= upper:
             raise ValueError(
                 f"Invalid percentiles: lower={lower}, upper={upper}. "
                 f"Must satisfy 0 <= lower < upper <= 100"
             )
-        return PercentileInterval(percentile=upper, n_samples=10000)
+        return AsymmetricPercentileInterval(
+            lower_percentile=lower,
+            upper_percentile=upper
+        )
+
+    def get_percentile_interval(
+        self,
+        percentile: float = 99.0,
+        n_samples: Optional[int] = None
+    ) -> PercentileInterval:
+        """Get PercentileInterval (symmetric).
+
+        Keeps a specified fraction of pixels, eliminating the same fraction
+        from both ends. This is a convenience wrapper for symmetric percentile
+        clipping.
+
+        Args:
+            percentile: Fraction of pixels to keep (default: 99.0)
+                       For example, 95.0 keeps 95% of pixels, eliminating
+                       2.5% from each end
+            n_samples: Sample size for large datasets (optional)
+
+        Returns:
+            PercentileInterval object
+
+        Example:
+            >>> normalizer = Normalizer()
+            >>> # Keep 95% of pixels (eliminate 2.5% from each end)
+            >>> normalized = normalizer.normalize(data, method='percentile',
+            ...                                   percentile=95.0)
+        """
+        if not (0 < percentile <= 100):
+            raise ValueError(f"Percentile must be in (0, 100], got {percentile}")
+
+        return PercentileInterval(
+            percentile=percentile,
+            n_samples=n_samples
+        )
 
     def _get_zscale_interval(
         self,
-        nsamples: int = 10000,
         contrast: float = 0.25,
         max_reject: float = 0.5,
         min_npixels: int = 5,
@@ -170,7 +217,6 @@ class Normalizer:
         while rejecting pixels that deviate from the linear fit.
 
         Args:
-            nsamples: Number of samples to use
             contrast: Contrast parameter (default: 0.25)
             max_reject: Maximum fraction of pixels to reject (default: 0.5)
             min_npixels: Minimum number of pixels (default: 5)
@@ -181,7 +227,6 @@ class Normalizer:
             ZScaleInterval object
         """
         return ZScaleInterval(
-            nsamples=nsamples,
             contrast=contrast,
             max_reject=max_reject,
             min_npixels=min_npixels,
