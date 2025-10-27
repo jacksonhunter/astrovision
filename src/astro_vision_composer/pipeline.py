@@ -187,13 +187,25 @@ class ProcessingPipeline:
 
         logger.info(f"Starting {self.mode} workflow with {len(fits_files)} files")
 
-        # Phase 0: Create master calibrations if needed
+        # Phase 0: Load or create master calibrations
         if auto_calibrate and self.calib_manager:
-            logger.info("Phase 0: Creating master calibration frames")
+            logger.info("Phase 0: Loading/creating master calibration frames")
             try:
-                self.calib_manager.create_master_calibrations()
+                # Try to load cached calibrations first (FAST - <1 second)
+                cache_loaded = self.calib_manager.load_cached_calibrations()
+
+                if cache_loaded:
+                    n_darks = len(self.calib_manager.calibrations.master_darks)
+                    n_flats = len(self.calib_manager.calibrations.master_flats)
+                    logger.info(f"✓ Loaded cached calibrations "
+                               f"({n_darks} darks, {n_flats} flats)")
+                else:
+                    # Cache miss, create new ones (SLOW - 30-60 seconds)
+                    logger.info("No cached calibrations found, creating from raw frames...")
+                    self.calib_manager.create_master_calibrations()
+                    logger.info("✓ Created fresh calibrations (cached for future runs)")
             except Exception as e:
-                logger.warning(f"Could not create master calibrations: {e}")
+                logger.warning(f"Could not load/create calibrations: {e}")
 
         # Phase 1: Load and calibrate
         logger.info("Phase 1: Loading FITS files")
@@ -493,7 +505,17 @@ class ProcessingPipeline:
                     from ccdproc import CCDData
                     import astropy.units as u
 
-                    ccd = CCDData(data, unit='adu', header=header)
+                    # Use CalibrationManager's unit detection if available
+                    if self.calib_manager and hasattr(self.calib_manager, '_get_unit_from_header'):
+                        unit = self.calib_manager._get_unit_from_header(fits_path)
+                        logger.debug(f"  Detected unit: {unit}")
+                    else:
+                        # Fallback: try BUNIT keyword, default to 'adu'
+                        bunit = header.get('BUNIT', 'adu')
+                        unit = bunit.lower() if isinstance(bunit, str) else 'adu'
+                        logger.debug(f"  Using unit from BUNIT: {unit}")
+
+                    ccd = CCDData(data, unit=unit, header=header)
 
                     # Apply calibration
                     filter_name = header.get('FILTER', None)
@@ -528,24 +550,92 @@ class ProcessingPipeline:
     def _normalize_and_stretch(
         self,
         phase1_data: Dict,
-        interval: str = 'auto',
-        stretch: str = 'auto'
+        interval: Union[str, List] = 'auto',
+        stretch: Union[str, List] = 'auto'
     ) -> Dict:
         """Normalize and stretch data using astropy ImageNormalize (Phase 2).
 
         This method now uses astropy's ImageNormalize to combine normalization
         and stretching in a single operation, following best practices.
 
+        Supports per-channel intervals and stretches for narrowband imaging.
+
         Args:
             phase1_data: Output from Phase 1
-            interval: Interval method ('auto', 'zscale', 'percentile', etc.)
-            stretch: Stretch method ('auto', 'asinh', 'none', etc.)
+            interval: Interval method or list of interval objects (one per band)
+                     - String: 'auto', 'zscale', 'percentile', 'per_channel'
+                     - List: One interval object per band
+            stretch: Stretch method or list of stretch objects (one per band)
+                     - String: 'auto', 'asinh', 'none', etc.
+                     - List: One stretch object per band
 
         Returns:
             Dictionary with normalized and stretched data
         """
-        # Get workflow-specific defaults
-        if interval == 'auto':
+        # Handle per-channel intervals/stretches (lists)
+        is_per_channel = isinstance(interval, list) or isinstance(stretch, list)
+
+        if is_per_channel:
+            # Per-channel mode - validate list lengths
+            band_names = list(phase1_data.keys())
+            n_bands = len(band_names)
+
+            # Convert to lists if not already
+            if not isinstance(interval, list):
+                # Single interval for all bands
+                interval_objs = [self._parse_interval(interval) if interval != 'auto'
+                                else self._get_default_interval()] * n_bands
+            else:
+                interval_objs = interval
+                if len(interval_objs) != n_bands:
+                    raise ValueError(
+                        f"Number of intervals ({len(interval_objs)}) must match "
+                        f"number of bands ({n_bands})"
+                    )
+
+            if not isinstance(stretch, list):
+                # Single stretch for all bands
+                stretch_objs = [self._parse_stretch(stretch) if stretch != 'auto'
+                               else self._get_default_stretch_object()] * n_bands
+            else:
+                stretch_objs = stretch
+                if len(stretch_objs) != n_bands:
+                    raise ValueError(
+                        f"Number of stretches ({len(stretch_objs)}) must match "
+                        f"number of bands ({n_bands})"
+                    )
+
+            logger.info(f"Using per-channel normalization for {n_bands} bands")
+
+            # Process each band with its specific interval/stretch
+            processed = {}
+            for i, (name, item) in enumerate(phase1_data.items()):
+                data = item['data']
+                interval_obj = interval_objs[i]
+                stretch_obj = stretch_objs[i]
+
+                # Create ImageNormalize for this band
+                if stretch_obj is None:
+                    norm = ImageNormalize(data, interval=interval_obj, stretch=LinearStretch())
+                else:
+                    norm = ImageNormalize(data, interval=interval_obj, stretch=stretch_obj)
+
+                processed_data = norm(data)
+                logger.info(
+                    f"  {name}: {type(interval_obj).__name__} + {type(stretch_obj).__name__ if stretch_obj else 'LinearStretch'}"
+                )
+
+                processed[name] = {
+                    'data': processed_data,
+                    'metadata': item['metadata'],
+                    'header': item['header'],
+                    'normalization': norm
+                }
+
+            return processed
+
+        # Single interval/stretch for all bands (original behavior)
+        if interval == 'auto' or interval == 'per_channel':
             interval_obj = self._get_default_interval()
         else:
             interval_obj = self._parse_interval(interval)
@@ -559,12 +649,6 @@ class ProcessingPipeline:
 
         for name, item in phase1_data.items():
             data = item['data']
-
-            # Handle per-channel mode (narrowband)
-            if isinstance(interval_obj, str) and interval_obj == 'per_channel':
-                # Narrowband mode - different per channel (not implemented yet)
-                logger.warning("Per-channel intervals not yet implemented, using ZScale")
-                interval_obj = ZScaleInterval()
 
             # Create ImageNormalize object combining interval and stretch
             # This is the astropy best practice way

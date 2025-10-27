@@ -25,7 +25,9 @@
       "Bash(python:*)",
       "Bash(pwsh:*)",
       "Read(//c/Users/jacks/.cache/astropy/docs/astropy.visualization/**)",
-      "Read(//c/Users/jacks/.cache/astropy/**)"
+      "Read(//c/Users/jacks/.cache/astropy/**)",
+      "Read(//c/Users/jacks/.cache/**)",
+      "Bash(conda activate:*)"
     ],
     "deny": [],
     "ask": []

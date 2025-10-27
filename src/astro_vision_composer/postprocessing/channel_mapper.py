@@ -1,12 +1,17 @@
 """Channel mapping for RGB composite generation.
 
 This module provides the ChannelMapper class for assigning wavelength bands
-to RGB color channels using chromatic ordering.
+to RGB color channels using chromatic ordering, narrowband palettes, and
+advanced multi-band selection strategies.
 """
 
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Union, Any
 from dataclasses import dataclass
 import logging
+import numpy as np
+
+from .palette_mapper import PaletteMapper, PaletteMapping
+from .band_selector import BandSelector, BandSelection, SelectionStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -44,14 +49,17 @@ class ChannelMapping:
 
 
 class ChannelMapper:
-    """Map wavelength bands to RGB color channels.
+    """Map wavelength bands to RGB color channels with advanced capabilities.
 
-    This class implements chromatic ordering - assigning longer wavelengths
-    to redder channels - which creates intuitive false-color representations
-    of multi-wavelength astronomical data.
+    This class implements:
+    - Chromatic ordering - assigning longer wavelengths to redder channels
+    - Narrowband palette mapping (Hubble, HOO, etc.)
+    - Multi-band selection from >3 filters
+    - Custom false-color palette definitions
 
     Example:
         >>> mapper = ChannelMapper()
+        >>>
         >>> # Auto-map PanSTARRS bands by wavelength
         >>> mapping = mapper.auto_map_by_wavelength({
         ...     'g': 481,  # nm
@@ -59,11 +67,23 @@ class ChannelMapper:
         ...     'i': 752
         ... })
         >>> print(mapping)  # ChannelMapping(R=i@752nm, G=r@617nm, B=g@481nm)
+        >>>
+        >>> # Use Hubble palette for narrowband
+        >>> mapping = mapper.map_narrowband(['ha', 'oiii', 'sii'], palette='hubble')
+        >>>
+        >>> # Select 3 from 10 bands using PCA
+        >>> mapping = mapper.select_and_map(
+        ...     bands=['f070w', 'f090w', ..., 'f480m'],
+        ...     wavelengths={...},
+        ...     data={...},
+        ...     strategy='pca'
+        ... )
     """
 
     def __init__(self):
-        """Initialize the ChannelMapper."""
-        pass
+        """Initialize the ChannelMapper with palette and selection support."""
+        self.palette_mapper = PaletteMapper()
+        self.band_selector = BandSelector()
 
     def auto_map_by_wavelength(
         self,
@@ -252,3 +272,141 @@ class ChannelMapper:
             )
 
         return self.auto_map_by_wavelength(available_wavelengths)
+
+    def map_narrowband(
+        self,
+        bands: Union[List[str], Dict[str, Any]],
+        palette: Union[str, Dict[str, str]] = 'hubble',
+        wavelengths: Optional[Dict[str, float]] = None
+    ) -> Union[ChannelMapping, PaletteMapping]:
+        """Map narrowband data using a named or custom palette.
+
+        Args:
+            bands: Either list of band names or dict of band data
+            palette: Palette name ('hubble', 'hoo', 'natural', 'mapped')
+                    or custom dict mapping bands to colors
+            wavelengths: Optional wavelength lookup
+
+        Returns:
+            ChannelMapping or PaletteMapping with assignments
+
+        Example:
+            >>> # Use Hubble palette (SHO: S-II→R, H-α→G, O-III→B)
+            >>> mapping = mapper.map_narrowband(['sii', 'ha', 'oiii'], 'hubble')
+            >>>
+            >>> # Use HOO bicolor palette
+            >>> mapping = mapper.map_narrowband(['ha', 'oiii'], 'hoo')
+            >>>
+            >>> # Custom palette
+            >>> mapping = mapper.map_narrowband(
+            ...     ['ha', 'oiii'],
+            ...     palette={'ha': 'red', 'oiii': 'cyan'}
+            ... )
+        """
+        palette_mapping = self.palette_mapper.map_narrowband(
+            bands=bands,
+            palette=palette,
+            wavelengths=wavelengths
+        )
+
+        # Convert PaletteMapping to ChannelMapping for compatibility
+        if isinstance(palette_mapping, PaletteMapping):
+            logger.info(f"Narrowband palette applied: {palette_mapping}")
+            return ChannelMapping(
+                red=palette_mapping.red_band or '',
+                green=palette_mapping.green_band or '',
+                blue=palette_mapping.blue_band or '',
+                chromatic_order=not palette_mapping.is_false_color
+            )
+
+        return palette_mapping
+
+    def select_and_map(
+        self,
+        bands: List[str],
+        wavelengths: Dict[str, float],
+        strategy: Union[str, SelectionStrategy] = 'max_span',
+        data: Optional[Dict[str, np.ndarray]] = None,
+        science_goal: Optional[str] = None
+    ) -> ChannelMapping:
+        """Select optimal 3 bands from multiple available and map to RGB.
+
+        This method is used when you have more than 3 bands available and need
+        to intelligently choose which 3 to use for RGB composition.
+
+        Args:
+            bands: List of available band names (>3)
+            wavelengths: Dict mapping band names to wavelengths (nm)
+            strategy: Selection strategy ('max_span', 'pca', 'science')
+            data: Optional image data dict (required for PCA)
+            science_goal: Science goal name (required for 'science' strategy)
+
+        Returns:
+            ChannelMapping with selected and assigned bands
+
+        Example:
+            >>> # Select from 10 JWST filters using max wavelength span
+            >>> mapping = mapper.select_and_map(
+            ...     bands=['f070w', 'f090w', 'f115w', 'f150w', 'f200w',
+            ...            'f277w', 'f356w', 'f410m', 'f444w', 'f480m'],
+            ...     wavelengths={...},
+            ...     strategy='max_span'
+            ... )
+            >>>
+            >>> # Use PCA to find most informative combination
+            >>> mapping = mapper.select_and_map(
+            ...     bands=[...],
+            ...     wavelengths={...},
+            ...     data={'f070w': array(...), ...},
+            ...     strategy='pca'
+            ... )
+        """
+        if len(bands) < 3:
+            raise ValueError(f"Need at least 3 bands, got {len(bands)}")
+
+        if len(bands) == 3:
+            # Only 3 bands, use chromatic ordering
+            logger.info("Exactly 3 bands, using chromatic ordering")
+            return self.auto_map_by_wavelength({b: wavelengths[b] for b in bands})
+
+        # Select best 3 bands
+        selection = self.band_selector.select_bands(
+            bands=bands,
+            wavelengths=wavelengths,
+            strategy=strategy,
+            data=data,
+            science_goal=science_goal
+        )
+
+        logger.info(f"Selected bands using {selection.strategy.value}: {selection}")
+
+        # Create mapping from selection
+        selected_wavelengths = {
+            selection.red_band: wavelengths[selection.red_band],
+            selection.green_band: wavelengths[selection.green_band],
+            selection.blue_band: wavelengths[selection.blue_band]
+        }
+
+        # Use manual mapping to preserve the selection's channel assignments
+        return self.manual_mapping(
+            red=selection.red_band,
+            green=selection.green_band,
+            blue=selection.blue_band,
+            wavelengths=selected_wavelengths
+        )
+
+    def list_narrowband_palettes(self) -> Dict[str, str]:
+        """List available narrowband palettes.
+
+        Returns:
+            Dict mapping palette names to descriptions
+        """
+        return self.palette_mapper.list_palettes()
+
+    def list_science_goals(self) -> Dict[str, str]:
+        """List available science-driven band selection presets.
+
+        Returns:
+            Dict mapping goal names to descriptions
+        """
+        return self.band_selector.list_science_goals()
