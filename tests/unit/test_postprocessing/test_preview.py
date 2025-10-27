@@ -136,7 +136,7 @@ class TestPreviewGenerator:
 
         preview_file = temp_output_dir / "preview.png"
 
-        preview_generator.create_and_save_preview(
+        preview_generator.save_thumbnail(
             rgb, preview_file, size=(256, 256)
         )
 

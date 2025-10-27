@@ -15,7 +15,7 @@ class TestChannelMapper:
             'i': {'wavelength': 752}
         }
 
-        mapping = channel_mapper.map_by_wavelength(bands)
+        mapping = channel_mapper.auto_map_by_wavelength(bands)
 
         # Chromatic ordering: shortest -> blue, longest -> red
         assert mapping['blue'] == 'g'  # Shortest
@@ -31,7 +31,7 @@ class TestChannelMapper:
             'oiii': {'wavelength': 501}
         }
 
-        mapping = channel_mapper.map_by_wavelength(bands)
+        mapping = channel_mapper.auto_map_by_wavelength(bands)
 
         # Hubble palette: SII=red, H-alpha=green, OIII=blue
         assert mapping['blue'] == 'oiii'  # Shortest
@@ -80,7 +80,7 @@ class TestChannelMapper:
             'i': {'wavelength': 752}
         }
 
-        mapping = channel_mapper.map_by_wavelength(bands, select_best=3)
+        mapping = channel_mapper.auto_map_by_wavelength(bands, select_best=3)
 
         # Should select 3 bands with good wavelength spread
         # Likely: u/g=blue, r=green, i=red (or skip u as it's too blue)
@@ -100,7 +100,7 @@ class TestChannelMapper:
         }
 
         # For RGB, typically use g, r, i or r, i, z
-        mapping = channel_mapper.map_by_wavelength(bands, select_best=3)
+        mapping = channel_mapper.auto_map_by_wavelength(bands, select_best=3)
 
         assert len(set(mapping.values())) == 3
 
@@ -113,7 +113,7 @@ class TestChannelMapper:
             'F356W': {'wavelength': 3560}
         }
 
-        mapping = channel_mapper.map_by_wavelength(bands, select_best=3)
+        mapping = channel_mapper.auto_map_by_wavelength(bands, select_best=3)
 
         # Should select 3 bands with good spread
         assert len(set(mapping.values())) == 3
@@ -130,7 +130,7 @@ class TestChannelMapper:
 
         # Should either fall back to manual mapping or raise error
         try:
-            mapping = channel_mapper.map_by_wavelength(bands)
+            mapping = channel_mapper.auto_map_by_wavelength(bands)
             # If it succeeds, check it returns something
             assert mapping is not None
         except (ValueError, KeyError):

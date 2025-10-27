@@ -14,10 +14,10 @@ class TestPhase1Preprocessing:
 
         # Load
         fits_data = fits_loader.load(fits_file)
-        assert fits_data.data is not None
+        assert fits_data.science is not None
 
         # Assess quality
-        quality = quality_assessor.assess_quality(fits_data.data)
+        quality = quality_assessor.assess_quality(fits_data.science)
         assert quality.snr > 0
         assert quality.dynamic_range > 0
 
@@ -27,14 +27,14 @@ class TestPhase1Preprocessing:
 
         for fits_file in edu008_data['fits_files']:
             fits_data = fits_loader.load(fits_file)
-            quality = quality_assessor.assess_quality(fits_data.data)
+            quality = quality_assessor.assess_quality(fits_data.science)
 
             results.append({
                 'file': fits_file.name,
-                'filter': fits_data.metadata.filter,
+                'filter': fits_data.metadata.filter_name,
                 'wavelength': fits_data.metadata.wavelength,
                 'snr': quality.snr,
-                'saturation': quality.saturated_fraction
+                'saturation': quality.saturation_fraction
             })
 
         # All bands should load and have quality metrics
@@ -62,12 +62,12 @@ class TestPhase1Preprocessing:
         fits_data = fits_loader.load(fits_file)
 
         # Calibrate (background subtraction)
-        calibrated = calibrator.subtract_background(fits_data.data)
+        calibrated = calibrator.subtract_background(fits_data.science)
 
         assert calibrated is not None
-        assert calibrated.shape == fits_data.data.shape
+        assert calibrated.shape == fits_data.science.shape
         # Background should be removed
-        assert calibrated.median() < fits_data.data.median()
+        assert calibrated.median() < fits_data.science.median()
 
     def test_full_phase1_pipeline(self, fits_loader, quality_assessor,
                                    calibrator, edu008_data):
@@ -79,10 +79,10 @@ class TestPhase1Preprocessing:
             fits_data = fits_loader.load(fits_file)
 
             # Assess quality
-            quality_before = quality_assessor.assess_quality(fits_data.data)
+            quality_before = quality_assessor.assess_quality(fits_data.science)
 
             # Calibrate
-            calibrated = calibrator.subtract_background(fits_data.data)
+            calibrated = calibrator.subtract_background(fits_data.science)
 
             # Assess quality after calibration
             quality_after = quality_assessor.assess_quality(calibrated)

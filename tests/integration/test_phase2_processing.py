@@ -16,7 +16,7 @@ class TestPhase2Processing:
         fits_data = fits_loader.load(fits_file)
 
         # Normalize
-        normalized = normalizer.normalize(fits_data.data, method='zscale')
+        normalized = normalizer.normalize(fits_data.science, method='zscale')
 
         assert 0 <= normalized.min() <= normalized.max() <= 1
 
@@ -62,7 +62,7 @@ class TestPhase2Processing:
             fits_data = fits_loader.load(fits_file)
 
             # Normalize
-            normalized = normalizer.normalize(fits_data.data, method='zscale')
+            normalized = normalizer.normalize(fits_data.science, method='zscale')
 
             # Stretch
             stretched = stretcher.stretch(normalized, method='asinh', a=0.1)

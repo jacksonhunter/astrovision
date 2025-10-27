@@ -1,7 +1,15 @@
 """Pytest configuration and fixtures for astro_vision_composer tests."""
 
-import pytest
+import sys
 from pathlib import Path
+
+# Add src directory to Python path for imports
+PROJECT_ROOT = Path(__file__).parent.parent
+SRC_PATH = PROJECT_ROOT / "src"
+if str(SRC_PATH) not in sys.path:
+    sys.path.insert(0, str(SRC_PATH))
+
+import pytest
 import numpy as np
 from astropy.io import fits
 from astropy.wcs import WCS
@@ -27,7 +35,8 @@ def edu008_data(noirlab_data_dir):
     if not data_dir.exists():
         pytest.skip(f"edu008 dataset not found at {data_dir}")
 
-    fits_files = sorted(data_dir.glob("edu008/*/*.fits"))
+    # Fixed: removed duplicate "edu008/" from glob pattern
+    fits_files = sorted(data_dir.glob("*/*.fits"))
     # Filter out processed files from output directories
     fits_files = [f for f in fits_files if "output" not in str(f)]
 
@@ -49,7 +58,7 @@ def edu010_data(noirlab_data_dir):
     if not data_dir.exists():
         pytest.skip(f"edu010 dataset not found at {data_dir}")
 
-    fits_files = sorted(data_dir.glob("edu010/*/*.fits"))
+    fits_files = sorted(data_dir.glob("*/*.fits"))
     fits_files = [f for f in fits_files if "output" not in str(f)]
 
     return {
@@ -66,7 +75,7 @@ def edu011_data(noirlab_data_dir):
     if not data_dir.exists():
         pytest.skip(f"edu011 dataset not found at {data_dir}")
 
-    fits_files = sorted(data_dir.glob("edu011/*/*.fits"))
+    fits_files = sorted(data_dir.glob("*/*.fits"))
     fits_files = [f for f in fits_files if "output" not in str(f)]
 
     return {
@@ -83,7 +92,7 @@ def edu012_data(noirlab_data_dir):
     if not data_dir.exists():
         pytest.skip(f"edu012 dataset not found at {data_dir}")
 
-    fits_files = sorted(data_dir.glob("edu012/*/*.fits"))
+    fits_files = sorted(data_dir.glob("*/*.fits"))
     fits_files = [f for f in fits_files if "output" not in str(f)]
 
     return {
@@ -100,7 +109,7 @@ def edu019_data(noirlab_data_dir):
     if not data_dir.exists():
         pytest.skip(f"edu019 dataset not found at {data_dir}")
 
-    fits_files = sorted(data_dir.glob("edu019/*/*.fits"))
+    fits_files = sorted(data_dir.glob("*/*.fits"))
     fits_files = [f for f in fits_files if "output" not in str(f)]
 
     return {

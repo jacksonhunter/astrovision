@@ -18,10 +18,10 @@ class TestPhase3Postprocessing:
         channels = {}
         for i, fits_file in enumerate(edu008_data['fits_files'][:3]):
             fits_data = fits_loader.load(fits_file)
-            normalized = normalizer.normalize(fits_data.data, method='zscale')
+            normalized = normalizer.normalize(fits_data.science, method='zscale')
             stretched = stretcher.stretch(normalized, method='asinh', a=0.1)
 
-            band_name = fits_data.metadata.filter or f'band_{i}'
+            band_name = fits_data.metadata.filter_name or f'band_{i}'
             channels[band_name] = {
                 'data': stretched,
                 'wavelength': fits_data.metadata.wavelength or 500 + i*100
@@ -32,7 +32,7 @@ class TestPhase3Postprocessing:
         band_info = {name: {'wavelength': channels[name]['wavelength']}
                      for name in band_names}
 
-        mapping = channel_mapper.map_by_wavelength(band_info)
+        mapping = channel_mapper.auto_map_by_wavelength(band_info)
 
         # Create composite
         rgb = compositor.create_lupton_rgb(
@@ -52,16 +52,16 @@ class TestPhase3Postprocessing:
         r, g, b = sample_rgb_data
 
         # Track history
-        history_tracker.record('normalize', {'method': 'zscale'})
-        history_tracker.record('stretch', {'method': 'asinh'})
-        history_tracker.record('composite', {'algorithm': 'lupton'})
+        history_tracker.record('normalize', {'method': 'zscale'}, 'Normalizer')
+        history_tracker.record('stretch', {'method': 'asinh'}, 'Stretcher')
+        history_tracker.record('composite', {'algorithm': 'lupton'}, 'Compositor')
 
         # Composite
         rgb = compositor.create_lupton_rgb(r, g, b, stretch=0.5, Q=8)
 
         # Export with history
         output_file = temp_output_dir / "composite.png"
-        image_exporter.save(rgb, output_file, history=history_tracker.get_history())
+        image_exporter.auto_save(rgb, output_file, history=history_tracker.get_history())
 
         assert output_file.exists()
 
@@ -90,14 +90,14 @@ class TestPhase3Postprocessing:
         # Composite
         rgb = compositor.create_lupton_rgb(r, g, b)
 
-        # Generate multiple preview sizes
-        sizes = [(128, 128), (256, 256), (512, 512)]
-        previews = preview_generator.create_multiple_previews(rgb, sizes=sizes)
+        # Generate preview
+        preview = preview_generator.generate_preview(rgb, target_size=(512, 512))
 
-        assert len(previews) == 3
+        assert preview is not None
+        assert preview.shape[0] <= 512 and preview.shape[1] <= 512
 
         # Save preview
         preview_file = temp_output_dir / "preview.png"
-        preview_generator.create_and_save_preview(rgb, preview_file, size=(256, 256))
+        preview_generator.save_thumbnail(rgb, preview_file, size=(256, 256))
 
         assert preview_file.exists()

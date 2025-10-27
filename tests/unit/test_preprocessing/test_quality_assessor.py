@@ -40,8 +40,8 @@ class TestQualityAssessor:
 
         report = quality_assessor.assess_quality(data, saturation_threshold=0.99)
 
-        assert report.saturated_fraction > 0
-        assert report.saturated_fraction <= 0.02  # ~1% saturated
+        assert report.saturation_fraction > 0
+        assert report.saturation_fraction <= 0.02  # ~1% saturated
 
     def test_no_saturation(self, quality_assessor):
         """Test case with no saturated pixels."""
@@ -49,7 +49,7 @@ class TestQualityAssessor:
 
         report = quality_assessor.assess_quality(data, saturation_threshold=0.9)
 
-        assert report.saturated_fraction == 0
+        assert report.saturation_fraction == 0
 
     def test_noise_estimation(self, quality_assessor):
         """Test noise estimation."""
@@ -81,7 +81,7 @@ class TestQualityAssessor:
         # Should handle gracefully
         assert report is not None
         # SNR might be 0 or inf depending on implementation
-        assert report.saturated_fraction == 0
+        assert report.saturation_fraction == 0
 
     def test_uniform_image(self, quality_assessor):
         """Test assessment of uniform (constant value) image."""
@@ -112,7 +112,7 @@ class TestQualityAssessor:
 
         assert report is not None
         assert report.snr > 0
-        assert 0 <= report.saturated_fraction <= 1.0
+        assert 0 <= report.saturation_fraction <= 1.0
         assert report.dynamic_range > 0
 
     def test_nan_handling(self, quality_assessor):
@@ -145,8 +145,8 @@ class TestQualityAssessor:
 
         # With high threshold, shouldn't be saturated
         report1 = quality_assessor.assess_quality(data, saturation_threshold=0.99)
-        assert report1.saturated_fraction == 0
+        assert report1.saturation_fraction == 0
 
         # With low threshold, should be saturated
         report2 = quality_assessor.assess_quality(data, saturation_threshold=0.90)
-        assert report2.saturated_fraction > 0
+        assert report2.saturation_fraction > 0

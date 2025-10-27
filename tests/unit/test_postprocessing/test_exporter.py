@@ -13,7 +13,7 @@ class TestImageExporter:
         rgb = np.random.rand(100, 100, 3)
 
         output_file = temp_output_dir / "test.png"
-        image_exporter.save(rgb, output_file, format='png')
+        image_exporter.auto_save(rgb, output_file, format='png')
 
         assert output_file.exists()
         assert output_file.suffix == '.png'
@@ -23,7 +23,7 @@ class TestImageExporter:
         rgb = np.random.rand(100, 100, 3)
 
         output_file = temp_output_dir / "test.tiff"
-        image_exporter.save(rgb, output_file, format='tiff')
+        image_exporter.auto_save(rgb, output_file, format='tiff')
 
         assert output_file.exists()
 
@@ -32,7 +32,7 @@ class TestImageExporter:
         rgb = np.random.rand(100, 100, 3)
 
         output_file = temp_output_dir / "test.jpg"
-        image_exporter.save(rgb, output_file, format='jpeg', quality=95)
+        image_exporter.auto_save(rgb, output_file, format='jpeg', quality=95)
 
         assert output_file.exists()
 
@@ -45,7 +45,7 @@ class TestImageExporter:
         history_tracker.record('stretch', {'method': 'asinh'})
 
         output_file = temp_output_dir / "test_with_metadata.png"
-        image_exporter.save(rgb, output_file, history=history_tracker.get_history())
+        image_exporter.auto_save(rgb, output_file, history=history_tracker.get_history())
 
         assert output_file.exists()
 
@@ -55,7 +55,7 @@ class TestImageExporter:
 
         for ext in ['.png', '.jpg', '.tif', '.tiff']:
             output_file = temp_output_dir / f"test{ext}"
-            image_exporter.save(rgb, output_file)
+            image_exporter.auto_save(rgb, output_file)
             assert output_file.exists()
 
     def test_8bit_conversion(self, image_exporter, temp_output_dir):
@@ -64,7 +64,7 @@ class TestImageExporter:
         rgb = np.random.rand(100, 100, 3)
 
         output_file = temp_output_dir / "test_8bit.png"
-        image_exporter.save(rgb, output_file, bit_depth=8)
+        image_exporter.auto_save(rgb, output_file, bit_depth=8)
 
         assert output_file.exists()
 
@@ -73,7 +73,7 @@ class TestImageExporter:
         rgb = np.random.rand(100, 100, 3)
 
         output_file = temp_output_dir / "test_16bit.tiff"
-        image_exporter.save(rgb, output_file, bit_depth=16)
+        image_exporter.auto_save(rgb, output_file, bit_depth=16)
 
         assert output_file.exists()
 
@@ -82,7 +82,7 @@ class TestImageExporter:
         gray = np.random.rand(100, 100)  # 2D array
 
         output_file = temp_output_dir / "test_gray.png"
-        image_exporter.save(gray, output_file)
+        image_exporter.auto_save(gray, output_file)
 
         assert output_file.exists()
 
@@ -93,12 +93,12 @@ class TestImageExporter:
         output_file = temp_output_dir / "test.png"
 
         # Save once
-        image_exporter.save(rgb, output_file)
+        image_exporter.auto_save(rgb, output_file)
         assert output_file.exists()
 
         # Save again (should either overwrite or raise error)
         # Behavior depends on implementation
-        image_exporter.save(rgb, output_file, overwrite=True)
+        image_exporter.auto_save(rgb, output_file, overwrite=True)
         assert output_file.exists()
 
     def test_jpeg_quality_parameter(self, image_exporter, temp_output_dir):
@@ -108,8 +108,8 @@ class TestImageExporter:
         file_high = temp_output_dir / "high_quality.jpg"
         file_low = temp_output_dir / "low_quality.jpg"
 
-        image_exporter.save(rgb, file_high, format='jpeg', quality=95)
-        image_exporter.save(rgb, file_low, format='jpeg', quality=50)
+        image_exporter.auto_save(rgb, file_high, format='jpeg', quality=95)
+        image_exporter.auto_save(rgb, file_low, format='jpeg', quality=50)
 
         # High quality should result in larger file
         assert file_high.stat().st_size > file_low.stat().st_size
@@ -121,7 +121,7 @@ class TestImageExporter:
         output_file = temp_output_dir / "test_clipped.png"
 
         # Should clip to [0, 1] without error
-        image_exporter.save(rgb, output_file)
+        image_exporter.auto_save(rgb, output_file)
         assert output_file.exists()
 
     def test_nan_handling(self, image_exporter, temp_output_dir):
@@ -133,7 +133,7 @@ class TestImageExporter:
 
         # Should either handle NaNs or raise informative error
         try:
-            image_exporter.save(rgb, output_file)
+            image_exporter.auto_save(rgb, output_file)
             # If it succeeds, file should exist
             assert output_file.exists()
         except ValueError:
@@ -162,7 +162,7 @@ class TestImageExporter:
 
         # Export
         output_file = temp_output_dir / "composite.png"
-        image_exporter.save(rgb, output_file)
+        image_exporter.auto_save(rgb, output_file)
 
         assert output_file.exists()
         assert output_file.stat().st_size > 1000  # Should be reasonable size

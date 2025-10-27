@@ -17,44 +17,44 @@ class TestEndToEndPipeline:
         if len(edu008_data['fits_files']) < 3:
             pytest.skip("Need at least 3 FITS files")
 
-        history_tracker.record('load', {'dataset': 'edu008'})
+        history_tracker.record('load', {'dataset': 'edu008'}, 'Pipeline')
 
         # Phase 1: Load and assess
         channels = {}
         for i, fits_file in enumerate(edu008_data['fits_files'][:3]):
             # Load
             fits_data = fits_loader.load(fits_file)
-            history_tracker.record('load_band', {'file': fits_file.name})
+            history_tracker.record('load_band', {'file': fits_file.name}, 'FITSLoader')
 
             # Assess quality
-            quality = quality_assessor.assess_quality(fits_data.data)
+            quality = quality_assessor.assess_quality(fits_data.science)
             history_tracker.record('quality_assessment', {
                 'band': i,
                 'snr': quality.snr,
-                'saturation': quality.saturated_fraction
-            })
+                'saturation': quality.saturation_fraction
+            }, 'QualityAssessor')
 
-            band_name = fits_data.metadata.filter or f'band_{i}'
+            band_name = fits_data.metadata.filter_name or f'band_{i}'
             channels[band_name] = {
-                'data': fits_data.data,
+                'data': fits_data.science,
                 'wavelength': fits_data.metadata.wavelength or 500 + i*100
             }
 
         # Phase 2: Normalize and stretch
         for name in channels:
             normalized = normalizer.normalize(channels[name]['data'], method='zscale')
-            history_tracker.record('normalize', {'band': name, 'method': 'zscale'})
+            history_tracker.record('normalize', {'band': name, 'method': 'zscale'}, 'Normalizer')
 
             stretched = stretcher.stretch(normalized, method='asinh', a=0.1)
-            history_tracker.record('stretch', {'band': name, 'method': 'asinh'})
+            history_tracker.record('stretch', {'band': name, 'method': 'asinh'}, 'Stretcher')
 
             channels[name]['data'] = stretched
 
         # Phase 3: Map and composite
         band_info = {name: {'wavelength': channels[name]['wavelength']}
                      for name in channels}
-        mapping = channel_mapper.map_by_wavelength(band_info)
-        history_tracker.record('channel_mapping', {'mapping': mapping})
+        mapping = channel_mapper.auto_map_by_wavelength(band_info)
+        history_tracker.record('channel_mapping', {'mapping': mapping}, 'ChannelMapper')
 
         rgb = compositor.create_lupton_rgb(
             channels[mapping['red']]['data'],
@@ -62,12 +62,12 @@ class TestEndToEndPipeline:
             channels[mapping['blue']]['data'],
             stretch=0.5, Q=8
         )
-        history_tracker.record('composite', {'algorithm': 'lupton', 'stretch': 0.5, 'Q': 8})
+        history_tracker.record('composite', {'algorithm': 'lupton', 'stretch': 0.5, 'Q': 8}, 'Compositor')
 
         # Export
         output_file = temp_output_dir / "end_to_end_composite.png"
-        image_exporter.save(rgb, output_file, history=history_tracker.get_history())
-        history_tracker.record('export', {'file': str(output_file)})
+        image_exporter.auto_save(rgb, output_file, history=history_tracker.get_history())
+        history_tracker.record('export', {'file': str(output_file)}, 'ImageExporter')
 
         # Verify
         assert output_file.exists()
@@ -90,10 +90,10 @@ class TestEndToEndPipeline:
         channels = {}
         for i, fits_file in enumerate(edu019_data['fits_files'][:4]):
             fits_data = fits_loader.load(fits_file)
-            normalized = normalizer.normalize(fits_data.data, method='zscale')
+            normalized = normalizer.normalize(fits_data.science, method='zscale')
             stretched = stretcher.stretch(normalized, method='asinh', a=0.1)
 
-            band_name = fits_data.metadata.filter or f'band_{i}'
+            band_name = fits_data.metadata.filter_name or f'band_{i}'
             channels[band_name] = {
                 'data': stretched,
                 'wavelength': fits_data.metadata.wavelength or 400 + i*150
@@ -102,7 +102,7 @@ class TestEndToEndPipeline:
         # Map (should select best 3)
         band_info = {name: {'wavelength': channels[name]['wavelength']}
                      for name in channels}
-        mapping = channel_mapper.map_by_wavelength(band_info, select_best=3)
+        mapping = channel_mapper.auto_map_by_wavelength(band_info, select_best=3)
 
         # Should have selected exactly 3 bands
         assert len(set(mapping.values())) == 3
@@ -127,7 +127,7 @@ class TestEndToEndPipeline:
         channels = {}
         for i, fits_file in enumerate(edu008_data['fits_files'][:3]):
             fits_data = fits_loader.load(fits_file)
-            normalized = normalizer.normalize(fits_data.data, method='zscale')
+            normalized = normalizer.normalize(fits_data.science, method='zscale')
             stretched = stretcher.stretch(normalized, method='asinh', a=0.1)
 
             # Enhance
@@ -142,7 +142,7 @@ class TestEndToEndPipeline:
         # Map and composite
         band_info = {name: {'wavelength': channels[name]['wavelength']}
                      for name in channels}
-        mapping = channel_mapper.map_by_wavelength(band_info)
+        mapping = channel_mapper.auto_map_by_wavelength(band_info)
 
         rgb = compositor.create_lupton_rgb(
             channels[mapping['red']]['data'],

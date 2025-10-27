@@ -62,19 +62,19 @@ class TestAllNOIRLabDatasets:
             for fits_file in dataset['fits_files']:
                 try:
                     fits_data = fits_loader.load(fits_file)
-                    quality = quality_assessor.assess_quality(fits_data.data)
+                    quality = quality_assessor.assess_quality(fits_data.science)
 
                     results.append({
                         'dataset': dataset['name'],
                         'file': fits_file.name,
                         'snr': quality.snr,
-                        'saturation': quality.saturated_fraction,
+                        'saturation': quality.saturation_fraction,
                         'dynamic_range': quality.dynamic_range
                     })
 
                     # Basic sanity checks
                     assert quality.snr >= 0
-                    assert 0 <= quality.saturated_fraction <= 1
+                    assert 0 <= quality.saturation_fraction <= 1
                     assert quality.dynamic_range >= 0
                 except Exception as e:
                     pytest.fail(f"Quality assessment failed for {dataset['name']}/{fits_file.name}: {e}")
@@ -96,10 +96,10 @@ class TestAllNOIRLabDatasets:
                     try:
                         if method == 'percentile':
                             normalized = normalizer.normalize(
-                                fits_data.data, method=method, vmin=5, vmax=95
+                                fits_data.science, method=method, vmin=5, vmax=95
                             )
                         else:
-                            normalized = normalizer.normalize(fits_data.data, method=method)
+                            normalized = normalizer.normalize(fits_data.science, method=method)
 
                         assert 0 <= normalized.min() <= normalized.max() <= 1
                     except Exception as e:
@@ -112,7 +112,7 @@ class TestAllNOIRLabDatasets:
         for dataset in all_noirlab_datasets:
             for fits_file in dataset['fits_files'][:1]:  # Just test first file per dataset
                 fits_data = fits_loader.load(fits_file)
-                normalized = normalizer.normalize(fits_data.data, method='zscale')
+                normalized = normalizer.normalize(fits_data.science, method='zscale')
 
                 for method in ['sqrt', 'log', 'asinh']:
                     try:
@@ -127,7 +127,7 @@ class TestAllNOIRLabDatasets:
                                     f"{dataset['name']}/{fits_file.name}: {e}")
 
     @pytest.mark.parametrize("dataset_name", ["edu008", "edu010"])
-    def test_known_good_datasets(self, noirlab_data_dir, fits_loader,
+    def test_known_good_datasets(self, dataset_name, noirlab_data_dir, fits_loader,
                                   normalizer, stretcher, compositor):
         """Test known-good datasets produce valid composites."""
         dataset_dir = noirlab_data_dir / dataset_name / "data"
@@ -135,7 +135,7 @@ class TestAllNOIRLabDatasets:
         if not dataset_dir.exists():
             pytest.skip(f"Dataset {dataset_name} not available")
 
-        fits_files = sorted(dataset_dir.glob(f"{dataset_name}/*/*.fits"))
+        fits_files = sorted(dataset_dir.glob("*/*.fits"))
         fits_files = [f for f in fits_files if "output" not in str(f)]
 
         if len(fits_files) < 3:
@@ -145,7 +145,7 @@ class TestAllNOIRLabDatasets:
         channels = []
         for fits_file in fits_files[:3]:
             fits_data = fits_loader.load(fits_file)
-            normalized = normalizer.normalize(fits_data.data, method='zscale')
+            normalized = normalizer.normalize(fits_data.science, method='zscale')
             stretched = stretcher.stretch(normalized, method='asinh', a=0.1)
             channels.append(stretched)
 
