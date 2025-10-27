@@ -1376,19 +1376,139 @@ class ProcessingPipeline:
 - Distortion analysis (extract distortion transforms)
 - WCS caching (10-20× performance improvement)
 
-### Phase 3C: Reprojector Enhancements (FUTURE)
-**Priority: LOW - Reprojector already works with gwcs via APE 14**
+### MissionControl Integration: MAST Data Fetching ✅ OPERATIONAL (2025-10-27)
+**Status: OPERATIONAL** - Successfully integrated with MissionControl for JWST/HST data acquisition
 
-**3C.1 Reference Frame Selection (0.5 day)**
-- Add `select_reference_frame()` using WCS validation
-- Choose optimal frame based on resolution, FOV, WCS quality
+**What Was Accomplished:**
+- ✅ Fixed `fetch_jwst_data_missioncontrol.py` API integration
+  - Fixed UniversalLocation API (use `from_astropy_frame()` classmethod, not invalid parameters)
+  - Fixed coordinate frame (GCRS instead of ICRS - ICRS doesn't support obstime)
+  - Fixed Unicode characters (✓/✗ → [OK]/[ERROR] for Windows compatibility)
+- ✅ Successfully downloaded JWST data from MAST via MissionControl
+  - Downloaded: SMACS 0723 First Deep Field (F115W filter, 39,511s exposure)
+  - Validated: 149 cached JWST FITS files discovered
+  - Tested: WCS handler with FITS files (TAN projection, 0.1109 arcsec/pixel)
+- ✅ Created comprehensive FITS Data Acquisition Guide
+  - 1,200-line guide covering JWST, HST, Chandra, Euclid, PanSTARRS, ZTF, Catalina, NOIRLab
+  - Mission-specific download instructions with copy-paste code examples
+  - Troubleshooting common issues, best practices, validation functions
+- ✅ Enhanced examples/README.md with FITS selection guidance
+  - 560-line section "Selecting the Best FITS Observations"
+  - Calibration level tables (JWST: _cal vs _i2d, HST: _flc vs _flt)
+  - Quality assessment checklist (SNR, saturation, WCS validation, filter coverage)
+  - Common pitfalls with WRONG vs RIGHT examples
 
-**3C.2 Artifact Mitigation (0.5 day)**
-- NaN filling for no-coverage regions
-- Edge cropping for interpolation artifacts
-- Footprint validation
+**Test Results:**
+- MissionControl MASTProvider successfully queried MAST archive
+- Downloaded JWST NIRCam observation to cache
+- WCS handler loaded and validated JWST FITS file
+- Preview image generated successfully
 
-**3C.3 Mission-specific WCS handling (REFERENCE - Already Implemented!)**
+**Limitations Discovered:**
+- ⚠️ Cache contains mostly `_i2d.fits` files (drizzled products with FITS WCS)
+- ⚠️ Need `_cal.fits` files for gwcs testing (contain ASDF extension)
+- ⚠️ `stdatamodels` not yet installed (required for ASDF/gwcs reading)
+- ⚠️ Cannot test Phase 3A/3B gwcs features until `_cal.fits` available
+
+**Files Modified/Created:**
+- Fixed `examples/fetch_jwst_data_missioncontrol.py` (~30 lines modified)
+- Created `FITS_DATA_ACQUISITION_GUIDE.md` (1,200 lines - comprehensive)
+- Enhanced `examples/README.md` (+560 lines FITS selection section)
+
+**Next Steps:**
+1. Install `stdatamodels`: `pip install stdatamodels`
+2. Fetch `_cal.fits` products from MAST (not `_i2d.fits`)
+3. Test Phase 3A/3B gwcs features with ASDF extension
+4. Validate `get_available_frames()`, `inspect_pipeline()`, etc.
+
+**Critical API Corrections:**
+```python
+# WRONG (original):
+loc = UniversalLocation(
+    coordinates=coord,  # ❌ No such parameter
+    name=target_name,   # ❌ No such parameter
+    ...
+)
+
+# CORRECT (fixed):
+from astropy.coordinates import GCRS
+from astropy.time import Time
+
+gcrs_frame = GCRS(
+    ra=ra*u.deg,
+    dec=dec*u.deg,
+    distance=1*u.kpc,
+    obstime=Time.now()  # Required for ITRS transformations
+)
+loc = UniversalLocation.from_astropy_frame(gcrs_frame)
+```
+
+**Windows Compatibility:**
+- Replaced Unicode checkmarks/crosses with ASCII: `✓` → `[OK]`, `✗` → `[ERROR]`
+- Script now runs without encoding errors on Windows PowerShell
+
+### Phase 3C: Reprojector Enhancements (1-1.5 days)
+**Priority: MEDIUM - Improve single-image reprojection quality**
+**Status:** Ready to implement
+**Effort:** 8-12 hours
+
+**Goal:** Smart reference frame selection and artifact cleanup for better alignment quality
+
+**3C.1 Reference Frame Selection (4 hours)**
+- Implement `select_reference_frame()` with multiple criteria:
+  - `'resolution'`: Choose highest resolution (finest pixels)
+  - `'fov'`: Choose largest field of view
+  - `'wcs_quality'`: Choose best WCS (has distortion, validates)
+  - `'auto'`: Weighted score combining all factors
+- Auto-selection scoring algorithm:
+  - Resolution score: 1.0 / pixel_scale (smaller = better)
+  - FOV score: width × height
+  - WCS quality: 2× if has distortion, 1.5× if validates
+  - Combined: `0.4*resolution + 0.3*log(fov) + 0.3*wcs_quality`
+
+**3C.2 Artifact Mitigation (3 hours)**
+- Implement `fill_nans()` with multiple strategies:
+  - `'zeros'`: Fill with 0 (safe for background)
+  - `'median'`: Fill with median of valid pixels
+  - `'interpolate'`: Use scipy.interpolate.griddata
+- Implement `crop_to_footprint()`:
+  - Auto-crop to valid data region
+  - Configurable threshold and margin
+- Implement `mask_edge_artifacts()`:
+  - Binary erosion to shrink footprint
+  - Mask boundary pixels with interpolation errors
+
+**3C.3 Quality Assessment (1 hour)**
+- Implement `assess_reprojection_quality()`:
+  - Coverage metric (fraction of valid pixels)
+  - Edge fraction (pixels near boundaries)
+  - NaN count
+  - Footprint mean (overlap quality)
+  - Overall quality boolean
+
+**3C.4 Enhanced align_image_set() (2 hours)**
+- Add `auto_select_reference` parameter (default: True)
+- Add `reference_criteria` parameter (default: 'auto')
+- Add `clean_artifacts` parameter (default: True)
+- Backward compatible with existing API
+
+**Files to Modify:**
+- `src/astro_vision_composer/processing/reprojector.py` (~150 lines added)
+
+**Tests to Create:**
+- `tests/unit/test_reprojector_phase3c.py` (~300 lines)
+  - test_select_reference_frame_by_resolution
+  - test_select_reference_frame_by_fov
+  - test_select_reference_frame_auto
+  - test_fill_nans_zeros
+  - test_fill_nans_median
+  - test_crop_to_footprint
+  - test_mask_edge_artifacts
+  - test_assess_reprojection_quality
+  - test_align_image_set_auto_reference
+
+**3C.5 Mission-specific WCS handling**
+✅ Already implemented in Phase 3A! (REFERENCE ONLY)
 ```python
 class WCSHandler:
     def load_wcs(self, fits_file, mission=None):
@@ -1604,54 +1724,265 @@ class ValidationReport:
 - Processing log export (JSON, CSV)
 - Quality metrics dashboard
 
-### Phase 7: Advanced Features (3-4 days)
-**Priority: MEDIUM - Nice to have, not blocking**
+### Phase 7: Advanced Features (5-6 days)
+**Priority: LOW - Advanced users and special use cases**
+**Effort:** 40-48 hours
 
-**7.1 Cosmic ray rejection (1 day)**
-Implement or integrate cosmic ray detection:
-- Option A: Use `astroscrappy` library (recommended, LACosmicimplementation)
-- Add to preprocessing pipeline before calibration
-- Support both single-frame (for space data) and multi-frame (for ground data)
+**Goal:** Add sophisticated mosaic blending, cosmic ray rejection, and advanced compositing
+
+**7.1 Mosaic Blending Algorithms (12-16 hours)**
+**Status:** Deferred from Phase 3C - for multi-tile mosaicking
+
+Implement `MosaicBlender` class with sophisticated seam-hiding algorithms:
+
+```python
+class MosaicBlender:
+    """Advanced blending for multi-tile mosaics (Euclid VIS, PanSTARRS, etc.)."""
+
+    def blend_feathering(
+        self,
+        tiles: List[np.ndarray],
+        footprints: List[np.ndarray],
+        feather_width: int = 50
+    ) -> np.ndarray:
+        """Alpha-blending with distance-based feathering.
+
+        Creates smooth transitions in overlap regions using
+        distance transforms from tile edges.
+
+        Use case: Simple mosaic with small overlaps
+        Performance: Fast (~1-2 seconds for 4K mosaic)
+        """
+
+    def blend_laplacian_pyramid(
+        self,
+        tiles: List[np.ndarray],
+        footprints: List[np.ndarray],
+        levels: int = 5
+    ) -> np.ndarray:
+        """Multi-scale Laplacian pyramid blending.
+
+        Blends low frequencies globally, high frequencies locally.
+        Preserves fine detail while completely hiding seams.
+
+        References
+        ----------
+        Burt & Adelson (1983) - "A Multiresolution Spline With
+        Application to Image Mosaics"
+
+        Use case: High-quality mosaics with visible seams
+        Performance: Medium (~5-10 seconds for 4K mosaic)
+        """
+
+    def blend_poisson(
+        self,
+        tiles: List[np.ndarray],
+        footprints: List[np.ndarray],
+        mask: Optional[np.ndarray] = None
+    ) -> np.ndarray:
+        """Gradient-domain Poisson blending.
+
+        Solves Poisson equation to match gradients while
+        preserving boundary conditions. Best quality but slowest.
+
+        References
+        ----------
+        Pérez et al. (2003) - "Poisson Image Editing"
+
+        Use case: Publication-quality mosaics
+        Performance: Slow (~30-60 seconds for 4K mosaic)
+        Requires: scipy sparse linear solver
+        """
+```
+
+**Sub-tasks:**
+- Implement distance transform weighting (4 hours)
+- Implement Laplacian pyramid construction/collapse (6 hours)
+- Implement Poisson solver for gradient blending (6-8 hours)
+- Test with Euclid VIS 36-detector mosaic (2-3 hours)
+
+**7.2 Wrapper for reproject_and_coadd() (4-6 hours)**
+**Status:** Integrate reproject.mosaicking with custom blending
+
+Add `create_mosaic()` method to Reprojector:
+
+```python
+def create_mosaic(
+    self,
+    images: Union[List[Path], List[Tuple[np.ndarray, WCS]]],
+    output_wcs: Optional[WCS] = None,
+    output_shape: Optional[Tuple[int, int]] = None,
+    blend_method: Literal['average', 'feather', 'pyramid', 'poisson'] = 'average',
+    match_background: bool = True,
+    combine_function: str = 'mean'
+) -> Tuple[np.ndarray, np.ndarray]:
+    """Create mosaic from multiple images.
+
+    Wraps reproject.mosaicking.reproject_and_coadd() with
+    optional advanced blending via MosaicBlender.
+
+    Parameters
+    ----------
+    images : list
+        List of FITS files or (data, wcs) tuples
+    output_wcs : WCS, optional
+        Target WCS. If None, uses find_optimal_celestial_wcs()
+    output_shape : tuple, optional
+        Target shape (ny, nx)
+    blend_method : str
+        Blending method:
+        - 'average': Simple weighted average (fast, reproject default)
+        - 'feather': Distance-based alpha blending
+        - 'pyramid': Laplacian pyramid blending
+        - 'poisson': Gradient-domain blending (slow, best quality)
+    match_background : bool
+        Apply background matching before blending (default: True)
+    combine_function : str
+        How to combine overlaps ('mean', 'median', 'sum')
+
+    Returns
+    -------
+    mosaic : ndarray
+        Combined mosaic image
+    footprint : ndarray
+        Number of images contributing to each pixel
+
+    Example
+    -------
+    >>> # Euclid VIS: 36 detector tiles → single mosaic
+    >>> tiles = [f'euclid_vis_ccd{i:02d}.fits' for i in range(36)]
+    >>> mosaic, footprint = reprojector.create_mosaic(
+    ...     tiles,
+    ...     blend_method='pyramid',
+    ...     match_background=True
+    ... )
+    """
+```
+
+**Sub-tasks:**
+- Wrap find_optimal_celestial_wcs() (1 hour)
+- Wrap reproject_and_coadd() (2 hours)
+- Integrate MosaicBlender (1-2 hours)
+- Test with PanSTARRS tiles (1 hour)
+
+**7.3 Distance-Based Weighting (4-6 hours)**
+**Status:** Weight tiles by distance from edges
+
+```python
+def compute_distance_weights(
+    self,
+    footprints: List[np.ndarray],
+    method: Literal['linear', 'gaussian', 'inverse_square'] = 'linear'
+) -> List[np.ndarray]:
+    """Compute distance-based weights for each tile.
+
+    Creates weight maps where pixels near tile centers have
+    higher weight than pixels near edges.
+
+    Parameters
+    ----------
+    footprints : list of ndarray
+        Footprint array for each tile
+    method : str
+        Weighting function:
+        - 'linear': Linear ramp from edge (d) to center (d_max)
+        - 'gaussian': Gaussian falloff from center
+        - 'inverse_square': 1/(1 + d²) weighting
+
+    Returns
+    -------
+    list of ndarray
+        Weight maps (0-1) for each tile
+
+    Use case: Combine with exposure weighting for optimal SNR
+    """
+```
+
+**7.4 Exposure Time / Quality Weighting (2-3 hours)**
+**Status:** Weight by signal quality
+
+```python
+def compute_exposure_weights(
+    self,
+    exposure_times: List[float],
+    snr_maps: Optional[List[np.ndarray]] = None
+) -> List[float]:
+    """Weight tiles by exposure time or SNR.
+
+    Longer exposures / higher SNR → more weight in overlaps.
+    Improves final mosaic SNR by ~sqrt(N_weighted).
+    """
+
+def combine_with_quality_weighting(
+    self,
+    tiles: List[np.ndarray],
+    quality_maps: List[np.ndarray],
+    combine_function: Callable = np.mean
+) -> np.ndarray:
+    """Combine tiles with per-pixel quality weighting.
+
+    Each tile has quality map (from variance, SNR, or DQ flags).
+    Higher quality pixels get more weight in final mosaic.
+    """
+```
+
+**7.5 Cosmic Ray Rejection (4-6 hours)**
+**Status:** Already planned, add to CalibrationManager
 
 ```python
 class CosmicRayRejecter:
     """Detect and remove cosmic rays."""
-    
+
     def reject_single(self, data, gain=1.0, readnoise=5.0):
         """Remove cosmic rays from single frame using LAcosmic."""
         import astroscrappy
         mask, cleaned = astroscrappy.detect_cosmics(
-            data, 
+            data,
             gain=gain,
             readnoise=readnoise,
             sigclip=4.5,
             sigfrac=0.3
         )
         return cleaned, mask
-    
+
     def reject_multi(self, ccd_list):
         """Remove cosmic rays by combining multiple frames."""
-        # Use ccdproc.Combiner with sigma clipping
         combiner = ccdp.Combiner(ccd_list)
         combiner.sigma_clipping(low_thresh=3, high_thresh=3)
         return combiner.median_combine()
 ```
 
-**7.2 Advanced compositing (1 day)**
+**7.6 Advanced Compositing (4-6 hours)**
 Implement additional RGB methods:
-- `make_rgb()` with per-channel intervals/stretches
+- `make_rgb()` with per-channel intervals/stretches (already done in Phase 1!)
 - HDR tone mapping for extreme dynamic range
-- Multi-scale sharpening (wavelet-based)
+- Multi-scale sharpening (wavelet-based) - alternative to CLAHE
 - Luminance-chrominance separation
 
-**7.3 Metadata preservation (1 day)**
+**7.7 Metadata Preservation (2-3 hours)**
 Enhance FITS header and EXIF handling:
 - Copy relevant FITS keywords to output images
 - Embed processing history in PNG/TIFF metadata
 - Generate sidecar files with full provenance
 - Support FITS header inheritance through pipeline
 
-**7.4 Performance optimization (0.5 day)**
+**7.8 Integration Tests for Mosaicking (4-6 hours)**
+Test with real multi-tile scenarios:
+- Euclid VIS 36-detector mosaic
+- PanSTARRS survey tiles with visible seams
+- JWST NIRCam mosaic mode
+- Ground-based wide-field imaging (multiple pointings)
+- Validate seam hiding with each blend method
+
+**Files to Create:**
+- `src/astro_vision_composer/processing/mosaic_blender.py` (~500 lines)
+- `tests/unit/test_mosaic_blending.py` (~400 lines)
+- `tests/integration/test_mosaic_workflows.py` (~300 lines)
+- `examples/mosaic_blending_example.py` (~200 lines)
+
+**Total Effort for Phase 7:** 40-48 hours (5-6 days)
+
+**7.9 Performance Optimization (4-6 hours)**
 - Memory-efficient processing for large files (>4GB)
 - Lazy loading and chunked operations
 - Parallel processing for multi-band operations

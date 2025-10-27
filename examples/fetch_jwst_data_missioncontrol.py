@@ -83,14 +83,20 @@ def fetch_jwst_target(
     print(f"Output: {output_dir.absolute()}")
     print()
 
-    # Create UniversalLocation
-    coord = SkyCoord(ra=ra*u.deg, dec=dec*u.deg, frame='icrs')
-    loc = UniversalLocation(
-        coordinates=coord,
-        name=target_name,
-        location_type='sky',
-        properties={'source': 'manual'}
+    # Create UniversalLocation using from_astropy_frame() classmethod
+    # UniversalLocation is a coordinate transformer, not a named object container
+    # CRITICAL: Must use GCRS (not ICRS) because ICRS doesn't support obstime
+    # GCRS = Geocentric Celestial Reference System (time-dependent, suitable for ITRS transforms)
+    from astropy.time import Time
+    from astropy.coordinates import GCRS
+
+    gcrs_frame = GCRS(
+        ra=ra*u.deg,
+        dec=dec*u.deg,
+        distance=1*u.kpc,
+        obstime=Time.now()  # Required for terrestrial frame transformations
     )
+    loc = UniversalLocation.from_astropy_frame(gcrs_frame)
 
     # Initialize MAST provider
     provider = MASTProvider()
@@ -114,7 +120,7 @@ def fetch_jwst_target(
             image_path = output_dir / f"{safe_name}_{instrument.lower()}_preview.png"
             image.save(image_path)
 
-            print(f"\n✓ SUCCESS!")
+            print(f"\n[OK] SUCCESS!")
             print(f"  Image saved: {image_path.name}")
             print(f"  Size: {image.size[0]}×{image.size[1]} pixels")
             print(f"  Source: {metadata.source}")
@@ -140,22 +146,22 @@ def fetch_jwst_target(
                             with fits.open(fits_file) as hdul:
                                 has_asdf = 'ASDF' in [hdu.name for hdu in hdul]
                                 if has_asdf:
-                                    print(f"      ✓ Has ASDF extension (gwcs present!)")
+                                    print(f"      [OK] Has ASDF extension (gwcs present!)")
                         except Exception as e:
                             print(f"      Could not check ASDF: {e}")
 
             return image, metadata
 
         else:
-            print(f"\n✗ No image returned")
+            print(f"\n[ERROR] No image returned")
             return None, None
 
     except NoDataError as e:
-        print(f"\n✗ No data available: {e}")
+        print(f"\n[ERROR] No data available: {e}")
         return None, None
 
     except Exception as e:
-        print(f"\n✗ ERROR: {e}")
+        print(f"\n[ERROR] ERROR: {e}")
         import traceback
         traceback.print_exc()
         return None, None
@@ -174,82 +180,84 @@ def test_wcs_from_cached_fits():
     print(f"Searching for cached JWST FITS files in:")
     print(f"  {cache_dir}\n")
 
-    # Look for NIRCam files
-    nircam_cache = cache_dir / "nircam"
-    if nircam_cache.exists():
-        fits_files = list(nircam_cache.glob("*_cal.fits"))
+    # Look for JWST files in MAST download structure
+    jwst_cache = cache_dir / "mastDownload" / "JWST"
 
-        if fits_files:
-            print(f"Found {len(fits_files)} NIRCam calibrated files\n")
+    # Find all FITS files (any calibration level)
+    fits_files = []
+    if jwst_cache.exists():
+        # Search recursively for FITS files
+        fits_files = list(jwst_cache.glob("**/*.fits"))
 
-            # Test WCS from first file
-            test_file = fits_files[0]
-            print(f"Testing WCS from: {test_file.name}")
+    if fits_files:
+        print(f"Found {len(fits_files)} JWST FITS file(s)\n")
 
-            try:
-                handler = WCSHandler()
+        # Test WCS from first file
+        test_file = fits_files[0]
+        print(f"Testing WCS from: {test_file.name}")
+        print(f"Full path: {test_file}")
 
-                # Load WCS (should auto-detect ASDF and use gwcs)
-                wcs = handler.load_wcs(test_file)
+        try:
+            handler = WCSHandler()
 
-                # Validate
-                info = handler.validate(wcs)
+            # Load WCS (should auto-detect ASDF and use gwcs)
+            wcs = handler.load_wcs(test_file)
 
-                print(f"\n✓ WCS loaded successfully!")
-                print(f"  Type: {'gwcs' if info.has_gwcs else 'FITS WCS'}")
-                print(f"  Valid: {info.is_valid}")
-                print(f"  Projection: {info.projection}")
-                print(f"  Pixel scale: {info.pixel_scale:.4f} arcsec/pixel" if info.pixel_scale else "  Pixel scale: N/A")
+            # Validate
+            info = handler.validate(wcs)
 
-                if info.has_gwcs:
-                    print(f"\n  gwcs features:")
-                    print(f"    Available frames: {info.available_frames}")
-                    print(f"    Axis names: {info.world_axis_names}")
+            print(f"\n[OK] WCS loaded successfully!")
+            print(f"  Type: {'gwcs' if info.has_gwcs else 'FITS WCS'}")
+            print(f"  Valid: {info.is_valid}")
+            print(f"  Projection: {info.projection}")
+            print(f"  Pixel scale: {info.pixel_scale:.4f} arcsec/pixel" if info.pixel_scale else "  Pixel scale: N/A")
 
-                    # Test Phase 3B features
-                    print(f"\n  Testing Phase 3B features:")
+            if info.has_gwcs:
+                print(f"\n  gwcs features:")
+                print(f"    Available frames: {info.available_frames}")
+                print(f"    Axis names: {info.world_axis_names}")
 
-                    # Get available frames
-                    frames = handler.get_available_frames(wcs)
-                    print(f"    ✓ get_available_frames(): {frames}")
+                # Test Phase 3B features
+                print(f"\n  Testing Phase 3B features:")
 
-                    # Inspect pipeline
-                    pipeline_info = handler.inspect_pipeline(wcs)
-                    print(f"    ✓ inspect_pipeline(): {pipeline_info['type']}")
-                    if pipeline_info['steps']:
-                        print(f"      Pipeline has {len(pipeline_info['steps'])} steps")
+                # Get available frames
+                frames = handler.get_available_frames(wcs)
+                print(f"    [OK] get_available_frames(): {frames}")
 
-                    # Get transform (if multiple frames)
-                    if len(frames) >= 2:
-                        try:
-                            transform = handler.get_transform(wcs, frames[0], frames[1])
-                            if transform:
-                                print(f"    ✓ get_transform({frames[0]} → {frames[1]}): Success")
-                        except Exception as e:
-                            print(f"    ✗ get_transform(): {e}")
+                # Inspect pipeline
+                pipeline_info = handler.inspect_pipeline(wcs)
+                print(f"    [OK] inspect_pipeline(): {pipeline_info['type']}")
+                if pipeline_info['steps']:
+                    print(f"      Pipeline has {len(pipeline_info['steps'])} steps")
 
-                    # Test bounding box
-                    bbox = handler.get_bounding_box(wcs)
-                    print(f"    ✓ get_bounding_box(): {bbox if bbox else 'Not set'}")
+                # Get transform (if multiple frames)
+                if len(frames) >= 2:
+                    try:
+                        transform = handler.get_transform(wcs, frames[0], frames[1])
+                        if transform:
+                            print(f"    [OK] get_transform({frames[0]} -> {frames[1]}): Success")
+                    except Exception as e:
+                        print(f"    [ERROR] get_transform(): {e}")
 
-                print(f"\n{'='*70}")
-                print("WCS Test PASSED! ✓")
-                print(f"{'='*70}\n")
+                # Test bounding box
+                bbox = handler.get_bounding_box(wcs)
+                print(f"    [OK] get_bounding_box(): {bbox if bbox else 'Not set'}")
 
-                return True
+            print(f"\n{'='*70}")
+            print("WCS Test PASSED! [OK]")
+            print(f"{'='*70}\n")
 
-            except Exception as e:
-                print(f"\n✗ WCS test failed: {e}")
-                import traceback
-                traceback.print_exc()
-                return False
+            return True
 
-        else:
-            print("No calibrated FITS files found in cache")
-            print("Run fetch commands first to download JWST data")
+        except Exception as e:
+            print(f"\n[ERROR] WCS test failed: {e}")
+            import traceback
+            traceback.print_exc()
             return False
+
     else:
-        print(f"NIRCam cache directory not found: {nircam_cache}")
+        print("No FITS files found in cache")
+        print("Run fetch commands first to download JWST data")
         return False
 
 
@@ -308,7 +316,7 @@ def main():
     )
 
     if image is not None:
-        print(f"\n✓ Data fetched successfully!")
+        print(f"\n[OK] Data fetched successfully!")
         print(f"\nNow testing WCS handler with cached FITS files...")
 
         # Test WCS
@@ -316,7 +324,7 @@ def main():
 
         if success:
             print("\n" + "="*70)
-            print("COMPLETE! ✓")
+            print("COMPLETE! [OK]")
             print("="*70)
             print(f"\nJWST data downloaded and WCS tested successfully!")
             print(f"\nCached FITS files can be used for:")
@@ -326,10 +334,10 @@ def main():
             print(f"\nTo fetch more targets, edit the targets list in this script")
             print(f"or call fetch_jwst_target() directly with custom coordinates.")
         else:
-            print("\n✗ WCS test failed - check cached files")
+            print("\n[ERROR] WCS test failed - check cached files")
 
     else:
-        print(f"\n✗ Could not fetch JWST data")
+        print(f"\n[ERROR] Could not fetch JWST data")
         print(f"\nTroubleshooting:")
         print(f"  1. Check internet connection")
         print(f"  2. Verify MAST is accessible")
@@ -339,3 +347,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+
