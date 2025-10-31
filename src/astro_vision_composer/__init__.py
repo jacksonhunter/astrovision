@@ -12,8 +12,9 @@ Modern API (Phases 1-4):
 """
 
 # Import main components for convenience
-from .preprocessing import FITSLoader, QualityAssessor, Calibrator
-from .preprocessing.mission_adapters import get_mission_adapter
+# NOTE: Preprocessing imports disabled - deprecated module has broken paths
+# from .preprocessing import FITSLoader, QualityAssessor, Calibrator
+# from deprecated.old_api_src.mission_adapters import get_mission_adapter
 from .processing import WCSHandler, Reprojector, Normalizer, Stretcher, Enhancer
 from .postprocessing import ChannelMapper, Compositor, ColorBalancer, ImageExporter, HistoryTracker
 from .utilities import FITSMetadata

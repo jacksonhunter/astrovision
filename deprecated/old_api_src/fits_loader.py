@@ -45,17 +45,24 @@ class FITSData:
     @property
     def shape(self) -> tuple:
         """Shape of the science data array."""
+        if self.science is None:
+            return None
         return self.science.shape
 
     @property
     def dtype(self) -> np.dtype:
         """Data type of the science array."""
+        if self.science is None:
+            return None
         return self.science.dtype
 
     def __repr__(self):
         """Pretty representation."""
         parts = [f"FITSData('{self.filepath.name}'"]
-        parts.append(f"shape={self.shape}")
+        if self.shape is not None:
+            parts.append(f"shape={self.shape}")
+        else:
+            parts.append("lazy=True")
         if self.metadata and self.metadata.filter_name:
             parts.append(f"filter={self.metadata.filter_name}")
         if self.extension_name:

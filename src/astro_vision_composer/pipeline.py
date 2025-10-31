@@ -92,7 +92,6 @@ class ProcessingPipeline:
             ... )
         """
         # Lazy imports to avoid circular dependency
-        from astro_vision_composer.preprocessing import FITSLoader, QualityAssessor
         from astro_vision_composer.processing import Normalizer, Stretcher
         from astro_vision_composer.postprocessing import (
             ChannelMapper, Compositor, ImageExporter, HistoryTracker
@@ -103,8 +102,6 @@ class ProcessingPipeline:
         self.history = HistoryTracker()
 
         # Initialize components
-        self.loader = FITSLoader()
-        self.quality_assessor = QualityAssessor()
         self.normalizer = Normalizer()
         self.stretcher = Stretcher()
         self.mapper = ChannelMapper()
@@ -146,7 +143,7 @@ class ProcessingPipeline:
 
     def process_to_rgb(
         self,
-        fits_files: List[Union[str, Path]],
+        fits_input,
         output_dir: Optional[Union[str, Path]] = None,
         auto_calibrate: bool = True,
         **kwargs
@@ -156,7 +153,11 @@ class ProcessingPipeline:
         This is the main entry point for end-to-end processing.
 
         Args:
-            fits_files: List of FITS file paths (at least 3 for RGB)
+            fits_input: FITS data input (at least 3 items for RGB). One of:
+                - List[Union[str, Path, BytesIO, HDUList]]: Multiple FITS inputs
+                - str/Path: Single file path (will be wrapped in list)
+                - BytesIO: Single stream (will be wrapped in list)
+                - HDUList: Single pre-opened FITS (will be wrapped in list)
             output_dir: Optional output directory for intermediate files
             auto_calibrate: Automatically apply calibration if CalibrationManager available
             **kwargs: Override workflow parameters (interval, stretch, etc.)
@@ -165,27 +166,30 @@ class ProcessingPipeline:
             RGB image array (float, [0, 1] range)
 
         Example:
-            >>> # Pre-calibrated data
+            >>> # File paths (traditional)
             >>> pipeline = ProcessingPipeline(mode='scientific')
             >>> rgb = pipeline.process_to_rgb(
-            ...     fits_files=['502nmos.fits', '656nmos.fits', '673nmos.fits'],
+            ...     fits_input=['502nmos.fits', '656nmos.fits', '673nmos.fits'],
             ...     output_dir='output/'
             ... )
             >>>
-            >>> # Raw data with automatic calibration
-            >>> pipeline = ProcessingPipeline(
-            ...     mode='scientific',
-            ...     calibration_dir='raw_data/calibration/'
-            ... )
-            >>> rgb = pipeline.process_to_rgb(
-            ...     fits_files=['sci_r.fits', 'sci_g.fits', 'sci_b.fits'],
-            ...     auto_calibrate=True
-            ... )
+            >>> # BytesIO streams (Mission Control integration)
+            >>> from mission_control import MissionControl
+            >>> mc = MissionControl()
+            >>> mast = mc.create_service('mast')
+            >>> streams = await mast.get_images_async(location, filters=['F850LP', 'F775W', 'F658N'])
+            >>> rgb = pipeline.process_to_rgb(fits_input=streams, output_dir='output/')
         """
-        if len(fits_files) < 3:
-            raise ValueError(f"Need at least 3 FITS files for RGB, got {len(fits_files)}")
+        # Normalize input to list for validation
+        if not isinstance(fits_input, list):
+            fits_input_list = [fits_input]
+        else:
+            fits_input_list = fits_input
 
-        logger.info(f"Starting {self.mode} workflow with {len(fits_files)} files")
+        if len(fits_input_list) < 3:
+            raise ValueError(f"Need at least 3 FITS inputs for RGB, got {len(fits_input_list)}")
+
+        logger.info(f"Starting {self.mode} workflow with {len(fits_input_list)} inputs")
 
         # Phase 0: Load or create master calibrations
         if auto_calibrate and self.calib_manager:
@@ -209,7 +213,7 @@ class ProcessingPipeline:
 
         # Phase 1: Load and calibrate
         logger.info("Phase 1: Loading FITS files")
-        self.phase1_data = self._load_fits_files(fits_files, auto_calibrate=auto_calibrate)
+        self.phase1_data = self._ensure_loaded_data(fits_input, auto_calibrate=auto_calibrate)
 
         # Phase 2: Normalize and stretch
         logger.info("Phase 2: Normalize and stretch")
@@ -237,7 +241,7 @@ class ProcessingPipeline:
 
     def process_with_normalizations(
         self,
-        fits_files: List[Union[str, Path]],
+        fits_input,
         normalizations: List[ImageNormalize],
         compositor: str = 'simple',
         output_dir: Optional[Union[str, Path]] = None,
@@ -314,7 +318,7 @@ class ProcessingPipeline:
 
     def process_with_arrays(
         self,
-        fits_files: List[Union[str, Path]],
+        fits_input,
         intervals: List,
         stretches: List,
         compositor: str = 'simple',
@@ -472,9 +476,191 @@ class ProcessingPipeline:
         else:
             raise ValueError(f"Unknown enhancement method: {method}")
 
+
+    def _ensure_loaded_data(
+        self,
+        fits_input,
+        auto_calibrate: bool = True
+    ):
+        """Factory method for polymorphic FITS input handling.
+
+        Accepts various input types and returns standardized Phase 1 data format.
+        This enables Mission Control integration (BytesIO streams) while maintaining
+        backward compatibility with file paths.
+
+        Args:
+            fits_input: One of:
+                - List[Union[str, Path, BytesIO, HDUList]]: Multiple inputs (mixed types allowed)
+                - Dict: Pre-loaded phase1_data (pass-through)
+                - str/Path: Single file path
+                - BytesIO: Single in-memory stream
+                - HDUList: Single pre-opened FITS
+            auto_calibrate: Apply calibration if CalibrationManager available (file paths only)
+
+        Returns:
+            Dictionary mapping name to loaded data with metadata
+
+        Raises:
+            TypeError: If input type is not supported
+            ValueError: If list is empty
+        """
+        from io import BytesIO
+        from astropy.io.fits import HDUList
+
+        # Already processed data dict - pass through
+        if isinstance(fits_input, dict) and any(k in fits_input for k in ['bands', 'data', 'metadata']):
+            logger.info("Using pre-loaded data")
+            return fits_input
+
+        # Single input - wrap in list for uniform processing
+        if not isinstance(fits_input, list):
+            fits_input = [fits_input]
+
+        if len(fits_input) == 0:
+            raise ValueError("fits_input cannot be empty")
+
+        # Process each item (handles mixed types)
+        loaded = {}
+        for i, item in enumerate(fits_input):
+            if isinstance(item, (str, Path)):
+                loaded.update(self._load_single_file(item, auto_calibrate=auto_calibrate))
+            elif isinstance(item, BytesIO):
+                loaded.update(self._load_from_stream(item, index=i))
+            elif isinstance(item, HDUList):
+                loaded.update(self._load_from_hdulist(item, index=i))
+            else:
+                raise TypeError(f"Unsupported input type at index {i}: {type(item).__name__}")
+
+        calibrated = auto_calibrate and self.calib_manager is not None and any(
+            isinstance(item, (str, Path)) for item in ([fits_input] if not isinstance(fits_input, list) else fits_input)
+        )
+        self.history.record('load_fits', {'count': len(loaded), 'calibrated': calibrated}, 'Phase1')
+        return loaded
+
+    def _load_single_file(self, fits_file, auto_calibrate: bool = True):
+        """Load FITS from file path with optional calibration.
+
+        Args:
+            fits_file: Path to FITS file
+            auto_calibrate: Apply calibration if CalibrationManager available
+
+        Returns:
+            Dictionary with single entry: {basename: {data, metadata, header}}
+        """
+        from astropy.io import fits
+
+        fits_path = Path(fits_file)
+        logger.debug(f"Loading {fits_path.name}")
+
+        with fits.open(fits_path) as hdul:
+            data = hdul[0].data
+            header = hdul[0].header
+
+        # Apply calibration if available
+        if auto_calibrate and self.calib_manager:
+            try:
+                from ccdproc import CCDData
+
+                # Use CalibrationManager's unit detection if available
+                if hasattr(self.calib_manager, '_get_unit_from_header'):
+                    unit = self.calib_manager._get_unit_from_header(fits_path)
+                    logger.debug(f"  Detected unit: {unit}")
+                else:
+                    # Fallback: try BUNIT keyword, default to 'adu'
+                    bunit = header.get('BUNIT', 'adu')
+                    unit = bunit.lower() if isinstance(bunit, str) else 'adu'
+                    logger.debug(f"  Using unit from BUNIT: {unit}")
+
+                ccd = CCDData(data, unit=unit, header=header)
+
+                # Apply calibration
+                filter_name = header.get('FILTER', None)
+                calibrated_ccd = self.calib_manager.calibrate(ccd, filter_name=filter_name)
+
+                # Extract calibrated data
+                data = calibrated_ccd.data
+                header = calibrated_ccd.header
+                logger.debug(f"  Applied calibration to {fits_path.name}")
+
+            except Exception as e:
+                logger.warning(f"Could not calibrate {fits_path.name}: {e}")
+
+        result = self._extract_data_from_hdulist_data(data, header, fits_path.stem)
+        return result
+
+    def _load_from_stream(self, stream, index: int):
+        """Load FITS from BytesIO stream (Mission Control integration).
+
+        Args:
+            stream: BytesIO object containing FITS data
+            index: Index for naming (e.g., 'stream_0')
+
+        Returns:
+            Dictionary with single entry: {name: {data, metadata, header}}
+        """
+        from astropy.io import fits
+
+        logger.debug(f"Loading stream {index}")
+
+        # astropy.io.fits.open() natively supports BytesIO
+        with fits.open(stream) as hdul:
+            data = hdul[0].data
+            header = hdul[0].header
+
+        result = self._extract_data_from_hdulist_data(data, header, f"stream_{index}")
+        return result
+
+    def _load_from_hdulist(self, hdul, index: int):
+        """Load from pre-opened HDUList.
+
+        Args:
+            hdul: Opened astropy HDUList
+            index: Index for naming (e.g., 'hdulist_0')
+
+        Returns:
+            Dictionary with single entry: {name: {data, metadata, header}}
+        """
+        logger.debug(f"Using HDUList {index}")
+
+        # Don't close HDUList - caller owns it
+        data = hdul[0].data
+        header = hdul[0].header
+
+        result = self._extract_data_from_hdulist_data(data, header, f"hdulist_{index}")
+        return result
+
+    def _extract_data_from_hdulist_data(self, data, header, name: str):
+        """Extract metadata from data and header.
+
+        Shared logic for file/stream/HDUList loading.
+
+        Args:
+            data: FITS data array
+            header: FITS header
+            name: Name/identifier for this data
+
+        Returns:
+            Dictionary with single entry: {name: {data, metadata, header}}
+        """
+        from astro_vision_composer.utilities.metadata import FITSMetadata
+
+        # Extract metadata
+        metadata_extractor = FITSMetadata()
+        metadata = metadata_extractor.extract_metadata(header)
+
+        logger.debug(f"  Loaded {name}: shape={data.shape}, wavelength={metadata.wavelength}nm")
+
+        return {
+            name: {
+                'data': data,
+                'metadata': metadata,
+                'header': header
+            }
+        }
+
     def _load_fits_files(
         self,
-        fits_files: List[Union[str, Path]],
+        fits_input,
         auto_calibrate: bool = True
     ) -> Dict:
         """Load FITS files and optionally apply calibration (Phase 1).
@@ -486,66 +672,7 @@ class ProcessingPipeline:
         Returns:
             Dictionary mapping filename to loaded data with metadata
         """
-        loaded = {}
-
-        for fits_file in fits_files:
-            fits_path = Path(fits_file)
-            logger.debug(f"Loading {fits_path.name}")
-
-            # Load FITS
-            from astropy.io import fits
-            with fits.open(fits_path) as hdul:
-                data = hdul[0].data
-                header = hdul[0].header
-
-            # Apply calibration if available
-            if auto_calibrate and self.calib_manager:
-                try:
-                    # Convert to CCDData for calibration
-                    from ccdproc import CCDData
-                    import astropy.units as u
-
-                    # Use CalibrationManager's unit detection if available
-                    if self.calib_manager and hasattr(self.calib_manager, '_get_unit_from_header'):
-                        unit = self.calib_manager._get_unit_from_header(fits_path)
-                        logger.debug(f"  Detected unit: {unit}")
-                    else:
-                        # Fallback: try BUNIT keyword, default to 'adu'
-                        bunit = header.get('BUNIT', 'adu')
-                        unit = bunit.lower() if isinstance(bunit, str) else 'adu'
-                        logger.debug(f"  Using unit from BUNIT: {unit}")
-
-                    ccd = CCDData(data, unit=unit, header=header)
-
-                    # Apply calibration
-                    filter_name = header.get('FILTER', None)
-                    calibrated_ccd = self.calib_manager.calibrate(ccd, filter_name=filter_name)
-
-                    # Extract calibrated data
-                    data = calibrated_ccd.data
-                    header = calibrated_ccd.header
-                    logger.debug(f"  Applied calibration to {fits_path.name}")
-
-                except Exception as e:
-                    logger.warning(f"Could not calibrate {fits_path.name}: {e}")
-
-            # Extract basic metadata
-            from astro_vision_composer.utilities.metadata import FITSMetadata
-            metadata_extractor = FITSMetadata()
-            metadata = metadata_extractor.extract_metadata(header)
-
-            # Store
-            basename = fits_path.stem
-            loaded[basename] = {
-                'data': data,
-                'metadata': metadata,
-                'header': header
-            }
-
-            logger.debug(f"  Loaded {basename}: shape={data.shape}, wavelength={metadata.wavelength}nm")
-
-        self.history.record('load_fits', {'count': len(loaded), 'calibrated': auto_calibrate and self.calib_manager is not None}, 'Phase1')
-        return loaded
+        return self._ensure_loaded_data(fits_files, auto_calibrate=auto_calibrate)
 
     def _normalize_and_stretch(
         self,
